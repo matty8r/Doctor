@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.async { [weak self] in
             self?.adjustMenus()
+            self?.keepMainWindowAlive()
             guard let self, !self.openedFilesAtLaunch else { return }
             DocumentStore.shared.restoreSession()
             if DocumentStore.shared.documents.isEmpty {
@@ -75,10 +76,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.canBecomeMain && !(window is NSPanel) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
+        guard let window = mainWindow else { return }
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private var mainWindow: NSWindow? {
+        NSApp.windows.first { $0.canBecomeMain && !($0 is NSPanel) }
+    }
+
+    /// Closing the window must not destroy it, or there'd be nothing left to
+    /// bring back when the next file is double-clicked.
+    private func keepMainWindowAlive() {
+        mainWindow?.isReleasedWhenClosed = false
     }
 
     // MARK: - Menu adjustments

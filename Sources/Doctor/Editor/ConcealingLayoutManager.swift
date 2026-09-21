@@ -17,9 +17,6 @@ final class ConcealingLayoutManager: NSLayoutManager {
     private(set) var concealedRanges: [NSRange] = []
     private(set) var decorations: [BlockDecoration] = []
 
-    /// Horizontal padding for full-width decorations, matched to the text inset.
-    var decorationInset: CGFloat = 0
-
     // MARK: - State
 
     func update(concealed: [NSRange], decorations: [BlockDecoration]) {

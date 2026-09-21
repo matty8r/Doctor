@@ -76,15 +76,16 @@ final class EditorTextView: NSTextView {
             return
         }
 
-        // Pressing Return on an empty item ends the list instead of nesting forever.
+        // Pressing Return on an empty item ends the list. The marker is removed
+        // and the caret stays put, rather than adding another empty line.
         if continuation.isEmptyItem {
             let clearRange = NSRange(location: lineRange.location,
                                      length: min(line.utf16.count, text.length - lineRange.location))
             if shouldChangeText(in: clearRange, replacementString: "") {
                 textStorage?.replaceCharacters(in: clearRange, with: "")
                 didChangeText()
+                setSelectedRange(NSRange(location: lineRange.location, length: 0))
             }
-            super.insertNewline(sender)
             return
         }
 

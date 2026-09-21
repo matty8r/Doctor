@@ -183,3 +183,17 @@ final class MarkdownSyntaxTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 2.0)
     }
 }
+
+extension MarkdownSyntaxTests {
+    func testSetextUnderlinePromotesTheLineAbove() {
+        let tokens = MarkdownSyntax.scan("Title\n=====" as NSString)
+        XCTAssertEqual(tokens[0].kind, .heading(level: 1))
+        XCTAssertEqual(tokens[1].kind, .setextUnderline(level: 1))
+    }
+
+    func testDashUnderlineAfterAParagraphIsAHeadingNotARule() {
+        let tokens = MarkdownSyntax.scan("Title\n---" as NSString)
+        XCTAssertEqual(tokens[0].kind, .heading(level: 2))
+        XCTAssertEqual(tokens[1].kind, .setextUnderline(level: 2))
+    }
+}

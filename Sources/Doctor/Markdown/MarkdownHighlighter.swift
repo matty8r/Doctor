@@ -111,16 +111,18 @@ enum MarkdownHighlighter {
             case .blank:
                 break
 
-            case .heading(let level), .setextUnderline(let level):
-                let font = theme.headingFont(level: level)
-                storage.addAttribute(.font, value: font, range: lineRange)
-                storage.addAttribute(.foregroundColor, value: MarkdownTheme.heading, range: token.content)
-                if level >= 5 {
-                    storage.addAttribute(.foregroundColor, value: MarkdownTheme.secondary, range: token.content)
-                }
-                if case .setextUnderline = token.kind, conceal, !isRevealed {
-                    concealed.append(lineRange)
-                }
+            case .heading(let level):
+                storage.addAttribute(.font, value: theme.headingFont(level: level), range: lineRange)
+                storage.addAttribute(
+                    .foregroundColor,
+                    value: level >= 5 ? MarkdownTheme.secondary : MarkdownTheme.heading,
+                    range: token.content
+                )
+
+            case .setextUnderline:
+                // The scanner has already promoted the line above to a heading;
+                // the row of "=" or "-" is pure punctuation.
+                if conceal && !isRevealed { concealed.append(lineRange) }
 
             case .fenceOpen:
                 if codeBlockStart == nil { codeBlockStart = lineRange.location }

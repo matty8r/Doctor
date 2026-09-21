@@ -253,6 +253,9 @@ public enum MarkdownSyntax {
             // ---- Setext underline (only when it follows a paragraph) ----------
             if let previous = tokens.last, previous.kind == .paragraph,
                let level = setextLevel(trimmed) {
+                // The line above was a paragraph until this underline appeared;
+                // promote it so the editor styles it as the heading it is.
+                tokens[tokens.count - 1].kind = .heading(level: level)
                 token.kind = .setextUnderline(level: level)
                 token.markers.append(contentRange(from: bodyStart))
                 token.content = NSRange(location: range.location, length: 0)

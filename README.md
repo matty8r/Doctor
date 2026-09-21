@@ -53,6 +53,13 @@ swift test      # runs the Markdown engine's test suite
 To make Doctor the default Markdown app: select any `.md` file in Finder, press
 `⌘I`, set **Open with** to Doctor, then click **Change All…**.
 
+The icon — a capsule split black and white on a diagonal, because Doctor is
+medicine and the two halves are the two views — is drawn in Core Graphics by
+`Scripts/GenerateIcon.swift` at build time, so no binary asset lives in the
+repo. Each of the ten `.icns` renditions is drawn at its own size rather than
+scaled from one master, which is what lets the hairline hold at a device pixel
+in the 16pt rendition instead of thinning into nothing.
+
 The app is ad-hoc signed and unsandboxed, so the first time it opens something in
 Documents, Desktop or Downloads, macOS will ask for permission. That's expected.
 Gatekeeper will also want a right-click ▸ Open the first time, since the

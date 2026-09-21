@@ -1,8 +1,15 @@
 #!/usr/bin/env swift
 //
 // Draws Doctor's app icon with Core Graphics and packs it into an .icns.
-// Keeping the icon as code means there is no binary blob in the repo and no
-// design-tool dependency in the build.
+//
+// The mark is a capsule split black and white on a diagonal: Doctor is
+// medicine, and the two halves are the two views — Source and Preview, one
+// document seen two ways.
+//
+// Keeping the icon as code means there is no binary blob in the repo, no design
+// tool in the build, and — the part that actually matters — each rendition is
+// *drawn* at its own size rather than scaled down from one master. A 16pt icon
+// is not a small 1024pt icon; see `hairlineWidth` below.
 //
 // Usage: swift Scripts/GenerateIcon.swift <output.icns>
 
@@ -13,6 +20,54 @@ let outputPath = CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]
     : "build/AppIcon.icns"
 
+// MARK: - Palette
+
+private enum Palette {
+    /// The ink half, and the hairline around the whole capsule.
+    static let ink = CGColor(red: 0.063, green: 0.067, blue: 0.078, alpha: 1)   // #101114
+    static let shell = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1)       // #FFFFFF
+
+    /// Paper, running dark at the top right to light at the bottom left —
+    /// opposite to the capsule, so the white half sits against the darker end
+    /// of the plate and the ink half against the lighter one. Each half gets
+    /// the local contrast it needs, which is what keeps the split legible once
+    /// the hairline is too thin to help.
+    static let paperDark = CGColor(red: 0.871, green: 0.859, blue: 0.831, alpha: 1)  // #DEDBD4
+    static let paperLight = CGColor(red: 0.973, green: 0.969, blue: 0.953, alpha: 1) // #F8F7F3
+
+    /// A faint inner edge so a pale plate still has a boundary on a light dock.
+    static let plateEdge = CGColor(red: 0.086, green: 0.094, blue: 0.110, alpha: 0.13)
+}
+
+// MARK: - Geometry
+//
+// All proportions are of the 1024pt canvas, so the drawing is resolution
+// independent and the numbers stay readable against Apple's icon grid.
+
+private enum Metric {
+    /// Apple's icon grid: artwork occupies 824 of 1024 points, centred.
+    static let plateInset: CGFloat = 100.0 / 1024.0
+    /// The macOS squircle proportion.
+    static let plateRadius: CGFloat = 0.2237
+    /// A 2.48 : 1 shell, close to a real size-0 capsule.
+    static let capsuleLength: CGFloat = 576.0 / 1024.0
+    static let capsuleWidth: CGFloat = 232.0 / 1024.0
+    static let hairline: CGFloat = 16.0 / 1024.0
+    static let plateEdge: CGFloat = 6.0 / 1024.0
+    /// Tilt, with the seam perpendicular to the long axis — which is where the
+    /// seam is on an actual capsule, so it reads as a pill rather than a shape
+    /// with a line through it.
+    static let tilt = CGFloat.pi / 4
+}
+
+/// Strokes are the first thing to vanish when an icon shrinks: at 16pt a
+/// proportional 16-unit hairline lands on a quarter of a pixel and disappears,
+/// taking the white half's definition with it. Holding it to a device pixel
+/// costs nothing at large sizes and saves the small ones.
+private func hairlineWidth(canvas: CGFloat, proportion: CGFloat, minimum: CGFloat = 1.0) -> CGFloat {
+    max(canvas * proportion, minimum)
+}
+
 // MARK: - Drawing
 
 func drawIcon(in ctx: CGContext, size s: CGFloat) {
@@ -20,89 +75,80 @@ func drawIcon(in ctx: CGContext, size s: CGFloat) {
     ctx.interpolationQuality = .high
     ctx.clear(CGRect(x: 0, y: 0, width: s, height: s))
 
-    // macOS icons sit inside a margin rather than filling the canvas.
-    let inset = s * 0.085
-    let rect = CGRect(x: inset, y: inset, width: s - inset * 2, height: s - inset * 2)
-    let radius = rect.width * 0.2237
+    let inset = s * Metric.plateInset
+    let plate = CGRect(x: inset, y: inset, width: s - inset * 2, height: s - inset * 2)
+    let radius = plate.width * Metric.plateRadius
+    let platePath = CGPath(
+        roundedRect: plate,
+        cornerWidth: radius,
+        cornerHeight: radius,
+        transform: nil
+    )
 
-    let plate = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
-
-    // Body: a deep indigo-to-teal gradient, the same family as the editor accent.
+    // ---- Paper -----------------------------------------------------------
     ctx.saveGState()
-    ctx.addPath(plate)
+    ctx.addPath(platePath)
     ctx.clip()
-    let colors = [
-        CGColor(red: 0.26, green: 0.30, blue: 0.62, alpha: 1.0),
-        CGColor(red: 0.16, green: 0.49, blue: 0.60, alpha: 1.0)
-    ] as CFArray
     if let space = CGColorSpace(name: CGColorSpace.sRGB),
-       let gradient = CGGradient(colorsSpace: space, colors: colors, locations: [0, 1]) {
+       let gradient = CGGradient(
+        colorsSpace: space,
+        colors: [Palette.paperDark, Palette.paperLight] as CFArray,
+        locations: [0, 1]
+       ) {
+        // Bitmap contexts are y-up, so maxY is the top of the plate.
         ctx.drawLinearGradient(
             gradient,
-            start: CGPoint(x: rect.minX, y: rect.maxY),
-            end: CGPoint(x: rect.maxX, y: rect.minY),
+            start: CGPoint(x: plate.maxX, y: plate.maxY),
+            end: CGPoint(x: plate.minX, y: plate.minY),
             options: []
         )
     }
+
+    // Stroke at double width inside the clip, so the edge stays within the
+    // plate silhouette instead of haloing outside it.
+    ctx.addPath(platePath)
+    ctx.setStrokeColor(Palette.plateEdge)
+    ctx.setLineWidth(hairlineWidth(canvas: s, proportion: Metric.plateEdge, minimum: 0.75) * 2)
+    ctx.strokePath()
     ctx.restoreGState()
 
-    // A soft top highlight so the plate reads as a physical object.
-    ctx.saveGState()
-    ctx.addPath(plate)
-    ctx.clip()
-    ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.10))
-    ctx.fill(CGRect(x: rect.minX, y: rect.midY, width: rect.width, height: rect.height / 2))
-    ctx.restoreGState()
-
-    // The mark: a stylised "M" with a descending arrow — the Markdown glyph,
-    // drawn as strokes rather than text so it scales cleanly to 16pt.
-    let markWidth = rect.width * 0.60
-    let markHeight = markWidth * 0.52
-    let markRect = CGRect(
-        x: rect.midX - markWidth / 2,
-        y: rect.midY - markHeight / 2,
-        width: markWidth,
-        height: markHeight
+    // ---- Capsule ---------------------------------------------------------
+    let length = s * Metric.capsuleLength
+    let width = s * Metric.capsuleWidth
+    let capsule = CGRect(x: -length / 2, y: -width / 2, width: length, height: width)
+    let capsulePath = CGPath(
+        roundedRect: capsule,
+        cornerWidth: width / 2,
+        cornerHeight: width / 2,
+        transform: nil
     )
-    let stroke = max(1, markRect.height * 0.165)
 
-    ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.97))
-    ctx.setLineWidth(stroke)
-    ctx.setLineCap(.round)
-    ctx.setLineJoin(.round)
+    ctx.saveGState()
+    ctx.translateBy(x: s / 2, y: s / 2)
+    // Positive rotation is counter-clockwise here, so the capsule points up
+    // and to the right and local -x becomes the lower-left half.
+    ctx.rotate(by: Metric.tilt)
 
-    // "M" occupies the left 58%.
-    let mLeft = markRect.minX + stroke / 2
-    let mRight = markRect.minX + markRect.width * 0.52
-    let mBottom = markRect.minY + stroke / 2
-    let mTop = markRect.maxY - stroke / 2
-    let mMid = (mLeft + mRight) / 2
+    ctx.addPath(capsulePath)
+    ctx.setFillColor(Palette.shell)
+    ctx.fillPath()
 
-    ctx.beginPath()
-    ctx.move(to: CGPoint(x: mLeft, y: mBottom))
-    ctx.addLine(to: CGPoint(x: mLeft, y: mTop))
-    ctx.addLine(to: CGPoint(x: mMid, y: mBottom + markRect.height * 0.34))
-    ctx.addLine(to: CGPoint(x: mRight, y: mTop))
-    ctx.addLine(to: CGPoint(x: mRight, y: mBottom))
+    ctx.saveGState()
+    ctx.addPath(capsulePath)
+    ctx.clip()
+    ctx.setFillColor(Palette.ink)
+    ctx.fill(CGRect(x: -length / 2, y: -width, width: length / 2, height: width * 2))
+    ctx.restoreGState()
+
+    ctx.addPath(capsulePath)
+    ctx.setStrokeColor(Palette.ink)
+    ctx.setLineWidth(hairlineWidth(canvas: s, proportion: Metric.hairline))
     ctx.strokePath()
 
-    // Descending arrow on the right.
-    let aX = markRect.minX + markRect.width * 0.82
-    ctx.beginPath()
-    ctx.move(to: CGPoint(x: aX, y: mTop))
-    ctx.addLine(to: CGPoint(x: aX, y: mBottom))
-    ctx.strokePath()
-
-    let head = markRect.width * 0.155
-    ctx.beginPath()
-    ctx.move(to: CGPoint(x: aX - head, y: mBottom + head))
-    ctx.addLine(to: CGPoint(x: aX, y: mBottom))
-    ctx.addLine(to: CGPoint(x: aX + head, y: mBottom + head))
-    ctx.strokePath()
+    ctx.restoreGState()
 }
 
 func pngData(size: Int) -> Data? {
-    let s = CGFloat(size)
     guard let space = CGColorSpace(name: CGColorSpace.sRGB),
           let ctx = CGContext(
             data: nil,
@@ -115,7 +161,7 @@ func pngData(size: Int) -> Data? {
           )
     else { return nil }
 
-    drawIcon(in: ctx, size: s)
+    drawIcon(in: ctx, size: CGFloat(size))
 
     guard let cgImage = ctx.makeImage() else { return nil }
     let rep = NSBitmapImageRep(cgImage: cgImage)

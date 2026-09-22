@@ -197,10 +197,19 @@ enum MarkdownHighlighter {
                 storage.addAttribute(.foregroundColor, value: MarkdownTheme.text, range: lineRange)
 
             case .horizontalRule:
-                decorations.append(BlockDecoration(range: lineRange, style: .rule))
                 if conceal && !isRevealed {
                     concealed.append(lineRange)
+                    // Anchored through the line break: the hidden dashes have no
+                    // glyphs of their own and would otherwise be found on the
+                    // line above, which is where the rule would then be drawn.
+                    decorations.append(BlockDecoration(
+                        range: NSRange(location: lineRange.location,
+                                       length: min(full.length, NSMaxRange(lineRange) + 1) - lineRange.location),
+                        style: .rule
+                    ))
                 } else {
+                    // Showing the dashes and drawing a rule through them says the
+                    // same thing twice, so while it's source it stays source.
                     storage.addAttribute(.foregroundColor, value: MarkdownTheme.marker, range: lineRange)
                 }
 

@@ -185,7 +185,12 @@ final class ConcealingLayoutManager: NSLayoutManager {
                 }
 
             case .rule:
-                let wide = fullWidth(rect, container: container, origin: origin)
+                // Same anchoring as a grid: measure the line the break is on.
+                guard glyphRange.length > 0 else { continue }
+                var ruleRect = lineFragmentRect(forGlyphAt: NSMaxRange(glyphRange) - 1, effectiveRange: nil)
+                ruleRect.origin.x += origin.x
+                ruleRect.origin.y += origin.y
+                let wide = fullWidth(ruleRect, container: container, origin: origin)
                 let line = NSRect(x: wide.minX, y: wide.midY - 0.5, width: wide.width, height: 1)
                 MarkdownTheme.separator.setFill()
                 NSBezierPath(rect: line).fill()

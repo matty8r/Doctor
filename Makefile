@@ -4,11 +4,12 @@
 #   make run        build and launch it
 #   make install    copy to /Applications and register with LaunchServices
 #   make debug      debug build (faster compile, slower app)
+#   make release    signed, notarized Doctor-<version>.dmg for distribution
 #   make clean
 
 SHELL := /bin/bash
 
-.PHONY: all app run install debug clean icon
+.PHONY: all app run install debug release clean icon
 
 all: app
 
@@ -17,6 +18,9 @@ app:
 
 debug:
 	@CONFIG=debug Scripts/build-app.sh
+
+release:
+	@Scripts/release.sh
 
 run: app
 	@open build/Doctor.app

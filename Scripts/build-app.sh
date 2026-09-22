@@ -28,8 +28,18 @@ echo "==> Drawing icon"
 swift "$ROOT/Scripts/GenerateIcon.swift" "$APP/Contents/Resources/AppIcon.icns" || \
 	echo "    (icon generation failed; continuing without one)"
 
-echo "==> Signing (ad-hoc)"
-codesign --force --sign - --identifier com.matty8r.Doctor "$APP"
+# Ad-hoc by default, which is all a local build needs. Scripts/release.sh sets
+# SIGN_IDENTITY to the Developer ID certificate, which also needs the hardened
+# runtime and a secure timestamp before Apple will notarize it.
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+	echo "==> Signing (ad-hoc)"
+	codesign --force --sign - --identifier com.matty8r.Doctor "$APP"
+else
+	echo "==> Signing ($SIGN_IDENTITY)"
+	codesign --force --sign "$SIGN_IDENTITY" --identifier com.matty8r.Doctor \
+		--options runtime --timestamp "$APP"
+fi
 
 echo "==> Registering with LaunchServices"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \

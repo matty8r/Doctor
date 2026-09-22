@@ -166,6 +166,16 @@ final class ConcealingLayoutManager: NSLayoutManager {
                           stroke: MarkdownTheme.separator,
                           radius: 6)
 
+            case .grid(let grid):
+                // The first row's line was made exactly as tall as the grid;
+                // its last glyph, the line break, is the one known to be on it.
+                guard glyphRange.length > 0 else { continue }
+                let line = lineFragmentRect(forGlyphAt: NSMaxRange(glyphRange) - 1, effectiveRange: nil)
+                TableLayout.draw(grid, at: NSPoint(
+                    x: origin.x + container.lineFragmentPadding,
+                    y: origin.y + line.minY + grid.margin
+                ))
+
             case .quote(let depth):
                 for level in 0..<max(1, depth) {
                     let x = rect.minX + CGFloat(level) * 14

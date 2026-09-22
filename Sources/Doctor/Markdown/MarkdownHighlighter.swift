@@ -8,7 +8,10 @@ struct BlockDecoration {
         case codeBlock
         case quote(depth: Int)
         case rule
+        /// A table shown as source, while it's being edited or in Source mode.
         case table
+        /// A table drawn as a grid, in the line the first row reserves for it.
+        case grid(TableGrid)
     }
     var range: NSRange
     var style: Style
@@ -32,7 +35,8 @@ enum MarkdownHighlighter {
         storage: NSTextStorage,
         mode: EditorMode,
         revealRange: NSRange,
-        settings: AppSettings
+        settings: AppSettings,
+        containerWidth: CGFloat = 0
     ) -> HighlightResult {
         let theme = MarkdownTheme(settings: settings, mode: mode)
         let text = storage.string as NSString
@@ -52,10 +56,27 @@ enum MarkdownHighlighter {
         let source = storage.string
         let doInline = text.length <= inlinePassLimit
 
-        // Track open blocks so code fences and tables get one decoration each
-        // rather than one per line.
+        // Tables are found up front, because how a row is styled depends on
+        // the whole table: it's drawn as a grid unless the caret is in any of
+        // its rows, and then all of them go back to being source.
+        let tables = tableGroups(in: tokens)
+        var tableOfToken: [Int: Int] = [:]
+        var renderTable: [Bool] = []
+        var editingTable: [Bool] = []
+        for (number, group) in tables.enumerated() {
+            for index in group { tableOfToken[index] = number }
+            let range = NSRange(location: tokens[group.lowerBound].range.location,
+                                length: NSMaxRange(tokens[group.upperBound - 1].range) - tokens[group.lowerBound].range.location)
+            let editing = touches(revealRange, range)
+            editingTable.append(editing)
+            renderTable.append(conceal && containerWidth > 0 && group.count >= 2
+                && tokens[group.lowerBound + 1].kind == .tableDelimiter
+                && !editing)
+        }
+
+        // Track open blocks so code fences get one decoration each rather than
+        // one per line.
         var codeBlockStart: Int?
-        var tableStart: Int?
         var quoteRun: (start: Int, end: Int, depth: Int)?
 
         func flushQuote() {
@@ -68,19 +89,47 @@ enum MarkdownHighlighter {
             }
         }
 
-        func flushTable(endingAt end: Int) {
-            if let start = tableStart {
-                decorations.append(BlockDecoration(
-                    range: NSRange(location: start, length: max(0, end - start)),
-                    style: .table
-                ))
-                tableStart = nil
+        func finishTable(_ number: Int) {
+            let group = tables[number]
+            let rows = Array(tokens[group])
+            let first = rows[0].range.location
+            let last = rows[rows.count - 1].range
+            let span = NSRange(location: first, length: min(full.length, NSMaxRange(last) + 1) - first)
+
+            if renderTable[number],
+               let grid = TableLayout.grid(rows: rows, storage: storage, theme: theme,
+                                           availableWidth: containerWidth - 2) {
+                // The source rows vanish; the first keeps a line exactly as
+                // tall as the grid, and the rest fold to nothing beneath it.
+                for (offset, row) in rows.enumerated() {
+                    concealed.append(row.range)
+                    let style = NSMutableParagraphStyle()
+                    let height = offset == 0 ? grid.reservedHeight : 0.01
+                    style.minimumLineHeight = height
+                    style.maximumLineHeight = height
+                    storage.addAttribute(.paragraphStyle, value: style,
+                                         range: NSRange(location: row.range.location,
+                                                        length: min(full.length, NSMaxRange(row.range) + 1) - row.range.location))
+                }
+                // The range runs through the first row's line break: its
+                // concealed characters can sit on the line above, but the break
+                // is always on the line that was made tall.
+                let anchor = NSRange(location: rows[0].range.location,
+                                     length: min(full.length, NSMaxRange(rows[0].range) + 1) - rows[0].range.location)
+                decorations.append(BlockDecoration(range: anchor, style: .grid(grid)))
+            } else {
+                decorations.append(BlockDecoration(range: span, style: .table))
             }
         }
 
-        for token in tokens {
+        for (tokenIndex, token) in tokens.enumerated() {
             let lineRange = token.range
+            let table = tableOfToken[tokenIndex]
+            let isRendered = table.map { renderTable[$0] } ?? false
+            // A table being edited is source in full, delimiter row included:
+            // editing one row of a table means reading the others as source too.
             let isRevealed = !conceal || touches(revealRange, lineRange)
+                || (table.map { editingTable[$0] } ?? false)
 
             // -- Blockquote runs -------------------------------------------------
             if token.quoteDepth > 0 {
@@ -160,9 +209,12 @@ enum MarkdownHighlighter {
                 storage.addAttribute(.foregroundColor, value: MarkdownTheme.secondary, range: lineRange)
 
             case .tableRow, .tableDelimiter:
-                if tableStart == nil { tableStart = lineRange.location }
-                // Monospace keeps the columns lined up while you edit them.
-                storage.addAttribute(.font, value: theme.monospaceFont, range: lineRange)
+                // Monospace keeps the columns lined up while you edit them. A
+                // table drawn as a grid keeps body text, which the grid's cells
+                // are built from.
+                if !isRendered {
+                    storage.addAttribute(.font, value: theme.monospaceFont, range: lineRange)
+                }
                 if token.kind == .tableDelimiter {
                     storage.addAttribute(.foregroundColor, value: MarkdownTheme.marker, range: lineRange)
                 }
@@ -184,16 +236,12 @@ enum MarkdownHighlighter {
                 break
             }
 
-            if !token.kind.isCode && token.kind != .tableRow && token.kind != .tableDelimiter {
-                flushTable(endingAt: lineRange.location)
-            }
-
             // -- Inline spans --------------------------------------------------------
             if doInline, token.content.length > 0, inlineEligible(token.kind) {
                 let spans = MarkdownSyntax.inlineTokens(in: text, source: source, range: token.content)
                 for span in spans {
                     applyInline(span, to: storage, theme: theme, mode: mode)
-                    if conceal && !isRevealed {
+                    if conceal && (!isRevealed || isRendered) {
                         concealed.append(contentsOf: span.markers)
                         if let destination = span.destination { concealed.append(destination) }
                     } else {
@@ -206,10 +254,15 @@ enum MarkdownHighlighter {
                     }
                 }
             }
+
+            // Cells are built from the finished styling, so a table is laid
+            // out once its last row has been through the inline pass.
+            if let table, tables[table].upperBound - 1 == tokenIndex {
+                finishTable(table)
+            }
         }
 
         flushQuote()
-        flushTable(endingAt: full.length)
         if let start = codeBlockStart {
             // An unterminated fence still deserves its background.
             decorations.append(BlockDecoration(
@@ -352,7 +405,9 @@ enum MarkdownHighlighter {
         case .tableRow, .tableDelimiter:
             style.lineHeightMultiple = 1.15
             firstLine += theme.baseSize * 0.5
-            wrapped = firstLine
+            // A long row's continuation hangs, so each row still starts at the
+            // margin and reads as one row.
+            wrapped = firstLine + theme.baseSize * 1.5
 
         case .horizontalRule:
             style.paragraphSpacingBefore = theme.baseSize * 0.5
@@ -368,6 +423,24 @@ enum MarkdownHighlighter {
         style.firstLineHeadIndent = firstLine
         style.headIndent = wrapped
         return style
+    }
+
+    // MARK: - Tables
+
+    /// Runs of consecutive table lines, as index ranges into `tokens`.
+    private static func tableGroups(in tokens: [LineToken]) -> [Range<Int>] {
+        var groups: [Range<Int>] = []
+        var start: Int?
+        for (index, token) in tokens.enumerated() {
+            let isTable = token.kind == .tableRow || token.kind == .tableDelimiter
+            if isTable, start == nil { start = index }
+            if !isTable, let open = start {
+                groups.append(open..<index)
+                start = nil
+            }
+        }
+        if let open = start { groups.append(open..<tokens.count) }
+        return groups
     }
 
     // MARK: - Range bookkeeping

@@ -124,6 +124,8 @@ struct MarkdownEditor: NSViewRepresentable {
         private var appliedStyleSignature: String = ""
         /// The line the caret was last on. Concealment only changes when this does.
         private var lastRevealLine: NSRange?
+        /// The text column width the last highlight laid tables out for.
+        private var highlightedWidth: CGFloat = 0
 
         init(document: MarkdownDocument, settings: AppSettings) {
             self.document = document
@@ -240,6 +242,12 @@ struct MarkdownEditor: NSViewRepresentable {
 
         @objc private func frameChanged() {
             updateInsets()
+            // Tables are laid out to the column width, so a resize that changes
+            // it lays them out again.
+            let width = textView?.textContainer?.size.width ?? 0
+            if abs(width - highlightedWidth) > 1, textView?.string.contains("|") == true {
+                highlight(immediately: false)
+            }
         }
 
         /// Centres the text column in preview mode. A window-wide measure is
@@ -300,8 +308,10 @@ struct MarkdownEditor: NSViewRepresentable {
                 storage: storage,
                 mode: document.mode,
                 revealRange: reveal,
-                settings: settings
+                settings: settings,
+                containerWidth: textView.textContainer?.size.width ?? 0
             )
+            highlightedWidth = textView.textContainer?.size.width ?? 0
             layoutManager.update(concealed: result.concealed, decorations: result.decorations)
 
             let theme = MarkdownTheme(settings: settings, mode: document.mode)

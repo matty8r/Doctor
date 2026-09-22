@@ -10,7 +10,7 @@ import PackageDescription
 // being wrong quietly damages someone's file.
 let package = Package(
     name: "Doctor",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "DoctorMarkdown", targets: ["DoctorMarkdown"])
     ],

@@ -31,6 +31,18 @@ struct DoctorCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
+            // Replacing this group also removes SwiftUI's Close, so it lives here.
+            // ⌘W closes the document in front, which is its tab when there are
+            // several; ⇧⌘W closes the window and every tab in it.
+            Button("Close") { NSApp.keyWindow?.performClose(nil) }
+                .keyboardShortcut("w", modifiers: .command)
+
+            Button("Close Window") { store.closeWindow() }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+                .disabled(!hasDocument)
+
+            Divider()
+
             Button("Save") { store.saveSelected() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!hasDocument)
@@ -50,7 +62,7 @@ struct DoctorCommands: Commands {
             Menu("Export") {
                 Button("PDF…") {
                     if let document {
-                        ExportService.exportPDF(document, in: NSApp.keyWindow)
+                        ExportService.exportPDF(document, in: store.selectedController?.window)
                     }
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
@@ -83,7 +95,7 @@ struct DoctorCommands: Commands {
         CommandGroup(replacing: .printItem) {
             Button("Print…") {
                 if let document {
-                    ExportService.printDocument(document, in: NSApp.keyWindow)
+                    ExportService.printDocument(document, in: store.selectedController?.window)
                 }
             }
             .keyboardShortcut("p", modifiers: .command)
@@ -102,6 +114,14 @@ struct DoctorCommands: Commands {
             Button("Toggle View") { document?.mode = document?.mode.toggled ?? .preview }
                 .keyboardShortcut("/", modifiers: .command)
                 .disabled(!hasDocument)
+
+            Divider()
+
+            Button(store.selectedController?.isCheatSheetVisible == true ? "Hide Cheat Sheet" : "Show Cheat Sheet") {
+                store.selectedController?.toggleCheatSheet()
+            }
+            .keyboardShortcut("0", modifiers: [.command, .option])
+            .disabled(!hasDocument)
 
             Divider()
 
@@ -163,16 +183,6 @@ struct DoctorCommands: Commands {
                 .keyboardShortcut("]", modifiers: .command)
             Button("Outdent") { EditorBridge.shared.perform { MarkdownEditing.shiftIndent(in: $0, by: -1) } }
                 .keyboardShortcut("[", modifiers: .command)
-        }
-
-        CommandGroup(after: .windowList) {
-            Button("Next Tab") { store.selectNextTab() }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
-                .disabled(store.documents.count < 2)
-
-            Button("Previous Tab") { store.selectPreviousTab() }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
-                .disabled(store.documents.count < 2)
         }
 
         CommandGroup(replacing: .help) {

@@ -183,6 +183,42 @@ enum MarkdownEditing {
         }
     }
 
+    // MARK: - Snippets
+
+    /// Wraps the selection as `prefix…suffix`; with nothing selected, inserts
+    /// the placeholder between them and selects it, ready to be typed over.
+    static func insertInline(_ textView: NSTextView, prefix: String, placeholder: String, suffix: String) {
+        let text = textView.string as NSString
+        let selection = textView.selectedRange()
+        let body = selection.length > 0 ? text.substring(with: selection) : placeholder
+        let offset = (prefix as NSString).length
+        replace(textView, range: selection, with: prefix + body + suffix,
+                select: NSRange(location: selection.location + offset, length: (body as NSString).length))
+    }
+
+    /// Inserts a block on lines of its own, with blank lines around it, and
+    /// selects `select` inside it (the whole block when that's nil).
+    static func insertBlock(_ textView: NSTextView, _ block: String, select: String? = nil) {
+        let text = textView.string as NSString
+        let selection = textView.selectedRange()
+        let before = text.substring(to: selection.location)
+        let after = text.substring(from: NSMaxRange(selection))
+
+        let lead = before.isEmpty || before.hasSuffix("\n\n") ? "" : (before.hasSuffix("\n") ? "\n" : "\n\n")
+        let trail = after.hasPrefix("\n") ? "\n" : "\n\n"
+        let replacement = lead + block + trail
+
+        let blockStart = selection.location + (lead as NSString).length
+        var target = NSRange(location: blockStart, length: (block as NSString).length)
+        if let select {
+            let inner = (block as NSString).range(of: select)
+            if inner.location != NSNotFound {
+                target = NSRange(location: blockStart + inner.location, length: inner.length)
+            }
+        }
+        replace(textView, range: selection, with: replacement, select: target)
+    }
+
     // MARK: - Machinery
 
     private static func selectedLineRange(_ textView: NSTextView) -> NSRange {

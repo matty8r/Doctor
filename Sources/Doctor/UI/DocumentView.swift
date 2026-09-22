@@ -2,35 +2,23 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct ContentView: View {
+/// Everything inside a document window, below the toolbar.
+struct DocumentView: View {
+    @ObservedObject var document: MarkdownDocument
     @EnvironmentObject private var store: DocumentStore
     @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         VStack(spacing: 0) {
-            TabBar()
-            Divider()
-            documentArea(for: store.selected)
+            if document.hasExternalChanges {
+                ExternalChangeBanner(document: document)
+                Divider()
+            }
+            MarkdownEditor(document: document, settings: settings)
+            StatusBar(document: document)
         }
         .background(Color(nsColor: MarkdownTheme.editorBackground))
         .onDrop(of: [UTType.fileURL], isTargeted: nil, perform: handleDrop)
-    }
-
-    @ViewBuilder
-    private func documentArea(for document: MarkdownDocument?) -> some View {
-        if let document {
-            VStack(spacing: 0) {
-                if document.hasExternalChanges {
-                    ExternalChangeBanner(document: document)
-                    Divider()
-                }
-                MarkdownEditor(document: document, settings: settings)
-                Divider()
-                StatusBar(document: document)
-            }
-        } else {
-            WelcomeView()
-        }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {

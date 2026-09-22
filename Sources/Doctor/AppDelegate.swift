@@ -9,12 +9,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Launch
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Documents open as tabs of one window whatever the system-wide
+        // "prefer tabs" setting says; see DocumentWindowController.
+        NSWindow.allowsAutomaticWindowTabbing = true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.shared.applyAppearance()
 
         DispatchQueue.main.async { [weak self] in
-            self?.adjustMenus()
-            self?.keepMainWindowAlive()
             guard let self, !self.openedFilesAtLaunch else { return }
             DocumentStore.shared.restoreSession()
             if DocumentStore.shared.documents.isEmpty {
@@ -26,16 +30,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         openedFilesAtLaunch = true
         DocumentStore.shared.open(urls: urls)
-        showMainWindow()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Clicking the Dock icon with nothing open starts a new document.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { showMainWindow() }
+        if !flag {
+            let store = DocumentStore.shared
+            if let doc = store.documents.first {
+                store.controller(for: doc)?.showWindow(nil)
+            } else {
+                store.newDocument()
+            }
+        }
         return true
     }
 
-    /// Doctor behaves like Preview: closing the window doesn't quit, because the
-    /// next file you double-click should open instantly.
+    /// Doctor behaves like Preview: closing the last window doesn't quit, because
+    /// the next file you double-click should open instantly.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -46,7 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = DocumentStore.shared
         store.persistSession()
 
-        guard store.hasUnsavedChanges else { return .terminateNow }
+        guard store.hasUnsavedChanges else {
+            store.prepareToTerminate()
+            return .terminateNow
+        }
 
         let alert = NSAlert()
         let count = store.documents.filter(\.isDirty).count
@@ -60,8 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            return store.saveAll() ? .terminateNow : .terminateCancel
+            guard store.saveAll() else { return .terminateCancel }
+            store.prepareToTerminate()
+            return .terminateNow
         case .alertSecondButtonReturn:
+            store.prepareToTerminate()
             return .terminateNow
         default:
             return .terminateCancel
@@ -70,68 +88,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         DocumentStore.shared.persistSession()
-    }
-
-    // MARK: - Window
-
-    private func showMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        guard let window = mainWindow else { return }
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    private var mainWindow: NSWindow? {
-        NSApp.windows.first { $0.canBecomeMain && !($0 is NSPanel) }
-    }
-
-    /// Closing the window must not destroy it, or there'd be nothing left to
-    /// bring back when the next file is double-clicked.
-    private func keepMainWindowAlive() {
-        mainWindow?.isReleasedWhenClosed = false
-    }
-
-    // MARK: - Menu adjustments
-
-    /// SwiftUI gives the window's Close item ⌘W. In a tabbed editor that's the
-    /// wrong thing to close, so the tab takes ⌘W and the window moves to ⇧⌘W.
-    @objc private func closeTab(_ sender: Any?) {
-        DocumentStore.shared.closeSelected()
-    }
-
-    @objc private func closeAllTabs(_ sender: Any?) {
-        let store = DocumentStore.shared
-        for document in store.documents {
-            if !store.close(document) { return }
-        }
-    }
-
-    private func adjustMenus() {
-        guard let fileMenu = NSApp.mainMenu?.item(withTitle: "File")?.submenu else { return }
-
-        if let closeItem = fileMenu.items.first(where: { $0.action == #selector(NSWindow.performClose(_:)) }) {
-            closeItem.title = "Close Window"
-            closeItem.keyEquivalent = "w"
-            closeItem.keyEquivalentModifierMask = [.command, .shift]
-
-            let closeTabItem = NSMenuItem(
-                title: "Close Tab",
-                action: #selector(closeTab(_:)),
-                keyEquivalent: "w"
-            )
-            closeTabItem.keyEquivalentModifierMask = [.command]
-            closeTabItem.target = self
-
-            let closeAllItem = NSMenuItem(
-                title: "Close All Tabs",
-                action: #selector(closeAllTabs(_:)),
-                keyEquivalent: "w"
-            )
-            closeAllItem.keyEquivalentModifierMask = [.command, .option]
-            closeAllItem.target = self
-
-            let index = fileMenu.index(of: closeItem)
-            fileMenu.insertItem(closeTabItem, at: index)
-            fileMenu.insertItem(closeAllItem, at: index + 1)
-        }
     }
 }

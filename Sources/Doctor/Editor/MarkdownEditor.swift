@@ -1,11 +1,23 @@
 import AppKit
 import SwiftUI
 
-/// Lets menu commands reach whichever editor is in front.
+/// Lets menu commands and the cheat sheet reach the editor in the front window.
 final class EditorBridge {
     static let shared = EditorBridge()
-    weak var textView: EditorTextView?
+    private let textViews = NSHashTable<EditorTextView>.weakObjects()
     private init() {}
+
+    func register(_ textView: EditorTextView) {
+        textViews.add(textView)
+    }
+
+    /// The main window's editor. Main rather than key, so a click in the cheat
+    /// sheet or a menu still lands in the document beside it.
+    var textView: EditorTextView? {
+        let editors = textViews.allObjects
+        return editors.first { $0.window != nil && $0.window == NSApp.mainWindow }
+            ?? editors.first { $0.window?.isVisible == true }
+    }
 
     func perform(_ action: (EditorTextView) -> Void) {
         guard let textView else { NSSound.beep(); return }
@@ -16,9 +28,7 @@ final class EditorBridge {
 
 /// Hosts the AppKit text view inside SwiftUI.
 ///
-/// There is exactly one of these for the whole window; switching tabs swaps the
-/// text in place rather than rebuilding the view, so scroll position, selection
-/// and undo history all survive a round trip between tabs.
+/// Each document window has its own, showing that window's document.
 struct MarkdownEditor: NSViewRepresentable {
     @ObservedObject var document: MarkdownDocument
     @ObservedObject var settings: AppSettings
@@ -129,7 +139,7 @@ struct MarkdownEditor: NSViewRepresentable {
             self.scrollView = scrollView
             self.textView = textView
             self.layoutManager = layoutManager
-            EditorBridge.shared.textView = textView
+            EditorBridge.shared.register(textView)
 
             NotificationCenter.default.addObserver(
                 self,

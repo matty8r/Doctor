@@ -9,9 +9,10 @@ edit it, prints it, and — when you decide it's a keeper — files it into Obsi
 
 ## What it does
 
-**Tabs, one window.** New tabs, not new windows. Open files land beside what you
-already have open, and the set of open tabs comes back after a restart, including
-unsaved ones.
+**One window, native tabs.** A single file is just a window, with its name and
+folder in the title bar. Open another and it lands beside the first as a macOS
+tab, and the tab bar appears only then. The set of open documents comes back
+after a restart, including unsaved ones.
 
 **Two views, both editable.**
 
@@ -21,8 +22,13 @@ unsaved ones.
   reading view; it just happens to be typeable.
 - **Source** — monospace, every character visible, syntax-coloured.
 
-`⌘1` / `⌘2` switch; `⌘/` toggles. There is deliberately no read-only mode: one
-document, one buffer, no conversion step that could mangle a file.
+The switch sits in the toolbar; `⌘1` / `⌘2` pick a view and `⌘/` toggles.
+There is deliberately no read-only mode: one document, one buffer, no conversion
+step that could mangle a file.
+
+**A cheat sheet, when you want one.** `⌥⌘0`, or the button at the right of the
+toolbar, opens a pane listing all the Markdown Doctor understands: the syntax,
+what it looks like, and its shortcut. Click a row to apply it at the caret.
 
 **Print and export.** `⌘P` prints, `⇧⌘E` writes a PDF, and there's HTML export
 and copy-as-HTML. These render the document properly with a print stylesheet —
@@ -40,13 +46,14 @@ Cmd-click follows a link. Clicking a `[ ]` ticks it. Paste is always plain text.
 
 ## Building
 
-Requires macOS 13 or later and the Xcode command line tools. No Xcode project,
+Requires macOS 14 or later and the Xcode command line tools. No Xcode project,
 no package dependencies.
 
 ```sh
 make            # builds build/Doctor.app
 make run        # builds and launches it
 make install    # copies to /Applications and registers it with LaunchServices
+make release    # signed, notarized Doctor-<version>.dmg for distribution
 swift test      # runs the Markdown engine's test suite
 ```
 

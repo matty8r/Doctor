@@ -7,23 +7,15 @@ struct DoctorApp: App {
     @StateObject private var settings = AppSettings.shared
 
     var body: some Scene {
-        // A single window, not a WindowGroup: Doctor's tabs live inside one
-        // window, so ⌘N should make a tab rather than another copy of the app.
-        Window("Doctor", id: "main") {
-            ContentView()
-                .environmentObject(store)
-                .environmentObject(settings)
-                .frame(minWidth: 620, minHeight: 400)
-        }
-        .defaultSize(width: 1020, height: 740)
-        .windowStyle(.hiddenTitleBar)
-        .commands {
-            DoctorCommands(store: store, settings: settings)
-        }
-
+        // Document windows are AppKit windows made by DocumentStore, so they can
+        // share a native tab group; see DocumentWindowController. SwiftUI only
+        // provides Settings, and the menu bar through `commands`.
         Settings {
             SettingsView()
                 .environmentObject(settings)
+        }
+        .commands {
+            DoctorCommands(store: store, settings: settings)
         }
     }
 }

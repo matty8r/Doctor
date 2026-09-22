@@ -2,73 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>Doctor</string>
 	<key>CFBundleDisplayName</key>
 	<string>Doctor</string>
-	<key>CFBundleExecutable</key>
-	<string>Doctor</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.matty8r.Doctor</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>Doctor</string>
-	<key>NSSupportsAutomaticTermination</key>
-	<false/>
-	<key>NSSupportsSuddenTermination</key>
-	<false/>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.productivity</string>
-
-	<!-- Doctor does not own the Markdown UTI, but it is happy to be its handler. -->
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>net.daringfireball.markdown</string>
-			<key>UTTypeDescription</key>
-			<string>Markdown Document</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>md</string>
-					<string>markdown</string>
-					<string>mdown</string>
-					<string>mkd</string>
-					<string>mkdn</string>
-					<string>mdtext</string>
-					<string>mdtxt</string>
-					<string>text</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>text/markdown</string>
-					<string>text/x-markdown</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
-
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -95,6 +30,68 @@
 				<string>public.plain-text</string>
 				<string>public.text</string>
 			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>Doctor</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.matty8r.Doctor</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Doctor</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.1</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Doctor</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Markdown Document</string>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+					<string>mdown</string>
+					<string>mkd</string>
+					<string>mkdn</string>
+					<string>mdtext</string>
+					<string>mdtxt</string>
+					<string>text</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/markdown</string>
+					<string>text/x-markdown</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>

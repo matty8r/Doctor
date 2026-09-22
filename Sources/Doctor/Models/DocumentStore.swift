@@ -3,21 +3,36 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Owns the open tabs. There is exactly one window, so there is exactly one store.
+/// Owns the open documents, each in its own window. The windows share one tab
+/// group, so to the person using it this is still "tabs", but AppKit draws them
+/// and only when there's more than one.
 final class DocumentStore: ObservableObject {
     static let shared = DocumentStore()
 
     @Published private(set) var documents: [MarkdownDocument] = []
-    @Published var selectedID: UUID?
+    /// The document in the main window, which is what menu commands act on.
+    @Published private(set) var selectedID: UUID?
 
+    private var controllers: [UUID: DocumentWindowController] = [:]
     private var documentObservers: [UUID: AnyCancellable] = [:]
     private var sessionSaveWork: DispatchWorkItem?
+    /// Set once quitting is certain. Windows close as the app goes down, and
+    /// that must not be recorded as the person closing their tabs.
+    private var isTerminating = false
 
     private init() {}
 
     var selected: MarkdownDocument? {
-        guard let selectedID else { return documents.first }
-        return documents.first { $0.id == selectedID } ?? documents.first
+        guard let selectedID else { return nil }
+        return documents.first { $0.id == selectedID }
+    }
+
+    func controller(for document: MarkdownDocument) -> DocumentWindowController? {
+        controllers[document.id]
+    }
+
+    var selectedController: DocumentWindowController? {
+        selected.flatMap { controllers[$0.id] }
     }
 
     var hasUnsavedChanges: Bool {
@@ -39,7 +54,7 @@ final class DocumentStore: ObservableObject {
 
         // Already open? Just go to it. Opening a file twice is never what you meant.
         if let existing = documents.first(where: { $0.url?.standardizedFileURL == target }) {
-            selectedID = existing.id
+            controllers[existing.id]?.showWindow(nil)
             return existing
         }
 
@@ -80,16 +95,22 @@ final class DocumentStore: ObservableObject {
         return types
     }
 
+    /// Opens `doc` in a new window, as a tab just after the current one.
     private func insert(_ doc: MarkdownDocument) {
-        let insertionIndex: Int
-        if let selectedID, let current = documents.firstIndex(where: { $0.id == selectedID }) {
-            insertionIndex = current + 1
-        } else {
-            insertionIndex = documents.count
-        }
-        documents.insert(doc, at: insertionIndex)
-        selectedID = doc.id
+        let controller = DocumentWindowController(markdown: doc)
+        controllers[doc.id] = controller
+        documents.append(doc)
         observe(doc)
+
+        if let window = controller.window {
+            if let current = selectedController?.window, current.isVisible {
+                current.addTabbedWindow(window, ordered: .above)
+            } else {
+                window.center()
+            }
+        }
+        controller.showWindow(nil)
+        selectedID = doc.id
         scheduleSessionSave()
     }
 
@@ -106,43 +127,57 @@ final class DocumentStore: ObservableObject {
 
     // MARK: - Closing
 
-    /// Returns false if the user cancelled.
+    /// Closes the document's window, asking first if it has unsaved changes.
+    /// Returns false if the person cancelled.
     @discardableResult
     func close(_ doc: MarkdownDocument) -> Bool {
-        if doc.isDirty {
-            switch confirmClose(doc) {
-            case .save:
-                guard save(doc) else { return false }
-            case .discard:
-                break
-            case .cancel:
-                return false
-            }
-        }
-        remove(doc)
+        guard confirmClose(doc) else { return false }
+        controllers[doc.id]?.window?.close()
         return true
     }
 
-    @discardableResult
-    func closeSelected() -> Bool {
-        guard let doc = selected else { return true }
-        return close(doc)
+    /// Closes every tab in the front document window, stopping if one is cancelled.
+    func closeWindow() {
+        guard let window = selectedController?.window else { return }
+        for tab in window.tabbedWindows ?? [window] {
+            guard let doc = (tab.windowController as? DocumentWindowController)?.markdown,
+                  close(doc)
+            else { return }
+        }
     }
 
-    private func remove(_ doc: MarkdownDocument) {
-        guard let index = documents.firstIndex(where: { $0.id == doc.id }) else { return }
-        documentObservers[doc.id] = nil
-        documents.remove(at: index)
-        if selectedID == doc.id {
-            let next = min(index, documents.count - 1)
-            selectedID = next >= 0 ? documents[next].id : nil
+    /// Asks what to do with unsaved changes. True means the window may close.
+    func confirmClose(_ doc: MarkdownDocument) -> Bool {
+        guard doc.isDirty else { return true }
+        switch askAboutUnsavedChanges(doc) {
+        case .save: return save(doc)
+        case .discard: return true
+        case .cancel: return false
         }
+    }
+
+    func didClose(_ controller: DocumentWindowController) {
+        guard !isTerminating else { return }
+        let doc = controller.markdown
+        controllers[doc.id] = nil
+        documentObservers[doc.id] = nil
+        documents.removeAll { $0.id == doc.id }
+        if selectedID == doc.id { selectedID = nil }
         scheduleSessionSave()
+    }
+
+    func didActivate(_ controller: DocumentWindowController) {
+        selectedID = controller.markdown.id
+    }
+
+    func prepareToTerminate() {
+        persistSession()
+        isTerminating = true
     }
 
     private enum CloseDecision { case save, discard, cancel }
 
-    private func confirmClose(_ doc: MarkdownDocument) -> CloseDecision {
+    private func askAboutUnsavedChanges(_ doc: MarkdownDocument) -> CloseDecision {
         let alert = NSAlert()
         alert.messageText = "Save changes to \"\(doc.displayName)\"?"
         alert.informativeText = "Your changes will be lost if you don't save them."
@@ -212,34 +247,6 @@ final class DocumentStore: ObservableObject {
         return true
     }
 
-    // MARK: - Tab navigation
-
-    func selectNextTab() { cycleTab(by: 1) }
-    func selectPreviousTab() { cycleTab(by: -1) }
-
-    private func cycleTab(by delta: Int) {
-        guard documents.count > 1,
-              let current = documents.firstIndex(where: { $0.id == selectedID })
-        else { return }
-        let next = (current + delta + documents.count) % documents.count
-        selectedID = documents[next].id
-    }
-
-    func selectTab(at index: Int) {
-        guard documents.indices.contains(index) else { return }
-        selectedID = documents[index].id
-    }
-
-    func moveTab(from source: Int, to destination: Int) {
-        guard documents.indices.contains(source),
-              destination >= 0, destination <= documents.count,
-              source != destination
-        else { return }
-        let doc = documents.remove(at: source)
-        documents.insert(doc, at: destination > source ? destination - 1 : destination)
-        scheduleSessionSave()
-    }
-
     // MARK: - Session restore
     //
     // Doctor is meant to be the thing you double-click a file into, so closing
@@ -272,8 +279,23 @@ final class DocumentStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
     }
 
+    /// Documents in the order their tabs appear, window by window.
+    private var documentsInTabOrder: [MarkdownDocument] {
+        var ordered: [MarkdownDocument] = []
+        var seen = Set<UUID>()
+        for doc in documents where !seen.contains(doc.id) {
+            let group = controllers[doc.id]?.window?.tabbedWindows ?? []
+            let tabs = group.compactMap { ($0.windowController as? DocumentWindowController)?.markdown }
+            for tab in (tabs.isEmpty ? [doc] : tabs) where seen.insert(tab.id).inserted {
+                ordered.append(tab)
+            }
+        }
+        return ordered
+    }
+
     func persistSession() {
-        guard let sessionURL else { return }
+        guard let sessionURL, !isTerminating else { return }
+        let documents = documentsInTabOrder
         let tabs = documents.map { doc -> SessionTab in
             SessionTab(
                 path: doc.url?.path,
@@ -319,7 +341,7 @@ final class DocumentStore: ObservableObject {
         }
 
         if documents.indices.contains(session.selectedIndex) {
-            selectedID = documents[session.selectedIndex].id
+            controllers[documents[session.selectedIndex].id]?.showWindow(nil)
         }
     }
 

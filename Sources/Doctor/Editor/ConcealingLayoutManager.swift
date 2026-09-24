@@ -154,11 +154,15 @@ final class ConcealingLayoutManager: NSLayoutManager {
             rect.origin.y += origin.y
 
             switch decoration.style {
-            case .codeBlock:
-                drawPanel(in: fullWidth(rect, container: container, origin: origin).insetBy(dx: 0, dy: -2),
+            case .codeBlock(let language):
+                // The fences are folded away, so the panel's breathing room is
+                // padding around the code rather than the blank lines they left.
+                let panel = fullWidth(rect, container: container, origin: origin).insetBy(dx: 0, dy: -7)
+                drawPanel(in: panel,
                           fill: MarkdownTheme.codeBackground,
                           stroke: MarkdownTheme.separator,
                           radius: 6)
+                drawLanguage(language, in: panel)
 
             case .table:
                 drawPanel(in: fullWidth(rect, container: container, origin: origin).insetBy(dx: 0, dy: -2),
@@ -208,6 +212,18 @@ final class ConcealingLayoutManager: NSLayoutManager {
             width: max(0, container.size.width - padding * 2),
             height: rect.height
         )
+    }
+
+    /// The fenced language, small and quiet in the panel's top-right corner.
+    private func drawLanguage(_ language: String, in panel: NSRect) {
+        let name = language.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, panel.height > 28 else { return }
+        let label = NSAttributedString(string: name, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .medium),
+            .foregroundColor: MarkdownTheme.marker
+        ])
+        let size = label.size()
+        label.draw(at: NSPoint(x: panel.maxX - size.width - 8, y: panel.minY + 4))
     }
 
     private func drawPanel(in rect: NSRect, fill: NSColor, stroke: NSColor, radius: CGFloat) {

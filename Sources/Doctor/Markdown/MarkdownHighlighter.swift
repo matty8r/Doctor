@@ -5,7 +5,7 @@ import DoctorMarkdown
 /// that make preview mode look rendered rather than merely coloured.
 struct BlockDecoration {
     enum Style: Equatable {
-        case codeBlock
+        case codeBlock(language: String)
         case quote(depth: Int)
         case rule
         /// A table shown as source, while it's being edited or in Source mode.
@@ -75,8 +75,38 @@ enum MarkdownHighlighter {
         }
 
         // Track open blocks so code fences get one decoration each rather than
-        // one per line.
-        var codeBlockStart: Int?
+        // one per line. The panel is measured from the code itself, never from
+        // the fences: concealed lines have no glyphs of their own and would be
+        // found on the line above, dragging the panel up with them.
+        var codeBlock: (body: NSRange?, isFence: Bool, language: String, fence: NSRange)?
+
+        /// Hidden punctuation that holds a line of its own folds that line away,
+        /// instead of leaving a blank one inside the block it belongs to.
+        func collapse(_ line: NSRange) {
+            let style = NSMutableParagraphStyle()
+            style.minimumLineHeight = 0.01
+            style.maximumLineHeight = 0.01
+            storage.addAttribute(.paragraphStyle, value: style,
+                                 range: NSRange(location: line.location,
+                                                length: min(full.length, NSMaxRange(line) + 1) - line.location))
+        }
+
+        func flushCode() {
+            guard let block = codeBlock else { return }
+            codeBlock = nil
+            decorations.append(BlockDecoration(range: block.body ?? block.fence,
+                                               style: .codeBlock(language: block.language)))
+        }
+
+        func extendCode(_ line: NSRange) {
+            guard var block = codeBlock else { return }
+            if let body = block.body {
+                block.body = NSRange(location: body.location, length: NSMaxRange(line) - body.location)
+            } else {
+                block.body = line
+            }
+            codeBlock = block
+        }
         var quoteRun: (start: Int, end: Int, depth: Int)?
 
         func flushQuote() {
@@ -174,25 +204,34 @@ enum MarkdownHighlighter {
                 if conceal && !isRevealed { concealed.append(lineRange) }
 
             case .fenceOpen:
-                if codeBlockStart == nil { codeBlockStart = lineRange.location }
+                flushCode()
+                // While the fence itself is on screen it names the language;
+                // the panel's corner label would only say it twice.
+                codeBlock = (body: nil, isFence: true,
+                             language: isRevealed ? "" : text.substring(with: token.content),
+                             fence: lineRange)
                 storage.addAttribute(.font, value: labelFont(theme), range: lineRange)
                 storage.addAttribute(.foregroundColor, value: MarkdownTheme.secondary, range: token.content)
+                // The language is drawn on the panel instead, so the whole line
+                // goes — the name is punctuation here too.
+                if conceal && !isRevealed {
+                    concealed.append(lineRange)
+                    collapse(lineRange)
+                }
 
             case .fenceClose:
-                if let start = codeBlockStart {
-                    decorations.append(BlockDecoration(
-                        range: NSRange(location: start, length: NSMaxRange(lineRange) - start),
-                        style: .codeBlock
-                    ))
-                    codeBlockStart = nil
-                }
+                flushCode()
                 storage.addAttribute(.font, value: labelFont(theme), range: lineRange)
-                if conceal && !isRevealed { concealed.append(lineRange) }
+                if conceal && !isRevealed {
+                    concealed.append(lineRange)
+                    collapse(lineRange)
+                }
 
             case .codeLine, .indentedCode:
-                if token.kind == .indentedCode, codeBlockStart == nil {
-                    codeBlockStart = lineRange.location
+                if token.kind == .indentedCode, codeBlock == nil {
+                    codeBlock = (body: nil, isFence: false, language: "", fence: lineRange)
                 }
+                extendCode(lineRange)
                 storage.addAttribute(.font, value: theme.monospaceFont, range: lineRange)
                 storage.addAttribute(.foregroundColor, value: MarkdownTheme.text, range: lineRange)
 
@@ -245,6 +284,12 @@ enum MarkdownHighlighter {
                 break
             }
 
+            // An indented block ends at the first line that isn't code. A blank
+            // line may be a gap inside one, so it ends nothing by itself.
+            if codeBlock?.isFence == false, !token.kind.isCode, token.kind != .blank {
+                flushCode()
+            }
+
             // -- Inline spans --------------------------------------------------------
             if doInline, token.content.length > 0, inlineEligible(token.kind) {
                 let spans = MarkdownSyntax.inlineTokens(in: text, source: source, range: token.content)
@@ -272,13 +317,8 @@ enum MarkdownHighlighter {
         }
 
         flushQuote()
-        if let start = codeBlockStart {
-            // An unterminated fence still deserves its background.
-            decorations.append(BlockDecoration(
-                range: NSRange(location: start, length: full.length - start),
-                style: .codeBlock
-            ))
-        }
+        // An unterminated fence still deserves its background.
+        flushCode()
 
         return HighlightResult(concealed: merge(concealed), decorations: decorations)
     }

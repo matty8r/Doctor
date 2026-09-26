@@ -10,18 +10,32 @@ import PackageDescription
 // being wrong quietly damages someone's file.
 let package = Package(
     name: "Doctor",
-    platforms: [.macOS(.v14)],
+    // iOS is here so the iOS app (../iOS) can depend on DoctorEditorKit as a
+    // local package — it never affects `swift build` on this Mac, which only
+    // ever builds the macOS products. The `Doctor` executable target below
+    // stays macOS-only in practice: it imports AppKit, so it simply won't
+    // compile if anything ever tried to build it for iOS.
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
-        .library(name: "DoctorMarkdown", targets: ["DoctorMarkdown"])
+        .library(name: "DoctorMarkdown", targets: ["DoctorMarkdown"]),
+        .library(name: "DoctorEditorKit", targets: ["DoctorEditorKit"])
     ],
     targets: [
         .target(
             name: "DoctorMarkdown",
             path: "Sources/DoctorMarkdown"
         ),
+        // The rendering engine shared with iOS: theme, syntax highlighter,
+        // table layout, and the layout manager that does concealment. See
+        // docs/ios.md for which of Doctor's pieces this covers and why.
+        .target(
+            name: "DoctorEditorKit",
+            dependencies: ["DoctorMarkdown"],
+            path: "Sources/DoctorEditorKit"
+        ),
         .executableTarget(
             name: "Doctor",
-            dependencies: ["DoctorMarkdown"],
+            dependencies: ["DoctorMarkdown", "DoctorEditorKit"],
             path: "Sources/Doctor"
         ),
         .testTarget(

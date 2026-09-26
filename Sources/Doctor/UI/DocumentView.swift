@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+import DoctorEditorKit
 /// Everything inside a document window, below the toolbar.
 struct DocumentView: View {
     @ObservedObject var document: MarkdownDocument

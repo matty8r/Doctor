@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+import DoctorEditorKit
 /// Owns the open documents, each in its own window. The windows share one tab
 /// group, so to the person using it this is still "tabs", but AppKit draws them
 /// and only when there's more than one.

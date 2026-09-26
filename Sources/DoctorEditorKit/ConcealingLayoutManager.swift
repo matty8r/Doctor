@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// The engine behind preview mode.
 ///
@@ -11,15 +15,30 @@ import AppKit
 /// 2. **Decoration.** Code blocks, blockquote bars and horizontal rules are
 ///    drawn behind the text, because punctuation alone can't make a code block
 ///    look like a code block.
-final class ConcealingLayoutManager: NSLayoutManager {
+///
+/// Cross-platform: on iOS, host it in a `UITextView` built the same manual way
+/// as on macOS — `UITextView(frame:textContainer:)` with this as the layout
+/// manager — rather than the default TextKit 2 stack.
+public final class ConcealingLayoutManager: NSLayoutManager {
+
+    public override init() {
+        super.init()
+    }
+
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
 
     /// Sorted, non-overlapping ranges whose glyphs should vanish.
-    private(set) var concealedRanges: [NSRange] = []
-    private(set) var decorations: [BlockDecoration] = []
+    public private(set) var concealedRanges: [NSRange] = []
+    public private(set) var decorations: [BlockDecoration] = []
 
     // MARK: - State
 
-    func update(concealed: [NSRange], decorations: [BlockDecoration]) {
+    /// Callers redraw the view themselves after this returns — unlike AppKit,
+    /// UIKit's `NSLayoutManager` has no reliable "my text view" back-reference
+    /// to reach for them.
+    public func update(concealed: [NSRange], decorations: [BlockDecoration]) {
         let dirty = boundsOfDifference(between: concealedRanges, and: concealed)
         concealedRanges = concealed
         self.decorations = decorations
@@ -35,9 +54,6 @@ final class ConcealingLayoutManager: NSLayoutManager {
             invalidateGlyphs(forCharacterRange: clamped, changeInLength: 0, actualCharacterRange: nil)
             invalidateLayout(forCharacterRange: clamped, actualCharacterRange: nil)
         }
-
-        // Decorations are painted, not laid out, so they only need a redraw.
-        firstTextView?.needsDisplay = true
     }
 
     /// The span covering every range that appears in one list but not the other.
@@ -96,11 +112,11 @@ final class ConcealingLayoutManager: NSLayoutManager {
 
     // MARK: - Glyph generation
 
-    override func setGlyphs(
+    public override func setGlyphs(
         _ glyphs: UnsafePointer<CGGlyph>,
         properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
         characterIndexes charIndexes: UnsafePointer<Int>,
-        font aFont: NSFont,
+        font aFont: PlatformFont,
         forGlyphRange glyphRange: NSRange
     ) {
         guard !concealedRanges.isEmpty, glyphRange.length > 0 else {
@@ -130,7 +146,7 @@ final class ConcealingLayoutManager: NSLayoutManager {
 
     // MARK: - Decoration drawing
 
-    override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+    public override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
         guard let container = textContainers.first, !decorations.isEmpty else {
             super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
             return
@@ -175,7 +191,7 @@ final class ConcealingLayoutManager: NSLayoutManager {
                 // its last glyph, the line break, is the one known to be on it.
                 guard glyphRange.length > 0 else { continue }
                 let line = lineFragmentRect(forGlyphAt: NSMaxRange(glyphRange) - 1, effectiveRange: nil)
-                TableLayout.draw(grid, at: NSPoint(
+                TableLayout.draw(grid, at: CGPoint(
                     x: origin.x + container.lineFragmentPadding,
                     y: origin.y + line.minY + grid.margin
                 ))
@@ -183,9 +199,9 @@ final class ConcealingLayoutManager: NSLayoutManager {
             case .quote(let depth):
                 for level in 0..<max(1, depth) {
                     let x = rect.minX + CGFloat(level) * 14
-                    let bar = NSRect(x: x, y: rect.minY, width: 3, height: rect.height)
+                    let bar = CGRect(x: x, y: rect.minY, width: 3, height: rect.height)
                     MarkdownTheme.quoteBar.setFill()
-                    NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
+                    Platform.roundedPath(bar, radius: 1.5).fill()
                 }
 
             case .rule:
@@ -195,18 +211,18 @@ final class ConcealingLayoutManager: NSLayoutManager {
                 ruleRect.origin.x += origin.x
                 ruleRect.origin.y += origin.y
                 let wide = fullWidth(ruleRect, container: container, origin: origin)
-                let line = NSRect(x: wide.minX, y: wide.midY - 0.5, width: wide.width, height: 1)
+                let line = CGRect(x: wide.minX, y: wide.midY - 0.5, width: wide.width, height: 1)
                 MarkdownTheme.separator.setFill()
-                NSBezierPath(rect: line).fill()
+                PlatformBezierPath(rect: line).fill()
             }
         }
 
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
     }
 
-    private func fullWidth(_ rect: NSRect, container: NSTextContainer, origin: NSPoint) -> NSRect {
+    private func fullWidth(_ rect: CGRect, container: NSTextContainer, origin: CGPoint) -> CGRect {
         let padding = container.lineFragmentPadding
-        return NSRect(
+        return CGRect(
             x: origin.x + padding,
             y: rect.minY,
             width: max(0, container.size.width - padding * 2),
@@ -215,20 +231,20 @@ final class ConcealingLayoutManager: NSLayoutManager {
     }
 
     /// The fenced language, small and quiet in the panel's top-right corner.
-    private func drawLanguage(_ language: String, in panel: NSRect) {
+    private func drawLanguage(_ language: String, in panel: CGRect) {
         let name = language.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty, panel.height > 28 else { return }
         let label = NSAttributedString(string: name, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .medium),
+            .font: PlatformFont.monospacedSystemFont(ofSize: 9, weight: .medium),
             .foregroundColor: MarkdownTheme.marker
         ])
         let size = label.size()
-        label.draw(at: NSPoint(x: panel.maxX - size.width - 8, y: panel.minY + 4))
+        label.draw(at: CGPoint(x: panel.maxX - size.width - 8, y: panel.minY + 4))
     }
 
-    private func drawPanel(in rect: NSRect, fill: NSColor, stroke: NSColor, radius: CGFloat) {
+    private func drawPanel(in rect: CGRect, fill: PlatformColor, stroke: PlatformColor, radius: CGFloat) {
         guard rect.width > 0, rect.height > 0 else { return }
-        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        let path = Platform.roundedPath(rect, radius: radius)
         fill.setFill()
         path.fill()
         stroke.setStroke()

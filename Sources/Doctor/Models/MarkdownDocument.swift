@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 
+import DoctorEditorKit
 /// One open tab: a Markdown file (or an untitled buffer) plus its editing state.
 final class MarkdownDocument: ObservableObject, Identifiable {
     let id = UUID()

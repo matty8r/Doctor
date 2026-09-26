@@ -1,6 +1,7 @@
 import AppKit
 import DoctorMarkdown
 
+import DoctorEditorKit
 /// The text view itself. Everything here is about making a plain `NSTextView`
 /// behave like a Markdown editor: plain-text paste, list continuation,
 /// Cmd-click to follow links, click to tick a checkbox.

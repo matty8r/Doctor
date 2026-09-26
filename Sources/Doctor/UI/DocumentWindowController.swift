@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
+import DoctorEditorKit
 /// One window per document. The windows share a tab group, so open files still
 /// land beside each other, but the tab bar only appears once there is more than
 /// one of them: a single file is just a window, the way Preview does it.

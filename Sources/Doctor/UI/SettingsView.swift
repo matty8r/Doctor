@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+import DoctorEditorKit
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
 

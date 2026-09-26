@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import DoctorMarkdown
 
 /// A Markdown table as preview mode draws it: real columns that wrap, rather
@@ -8,19 +12,19 @@ import DoctorMarkdown
 /// them and gives the first row a line tall enough to hold the grid, and the
 /// layout manager paints this into that space. Put the caret in the table and
 /// it goes back to being source, like any other line being edited.
-struct TableGrid: Equatable {
+public struct TableGrid: Equatable {
     /// Header row first. Every row has one entry per column.
     var cells: [[NSAttributedString]]
     var columnWidths: [CGFloat]
     var rowHeights: [CGFloat]
-    var padding: NSSize
+    var padding: CGSize
     /// Space above and below the grid, inside the line that reserves it.
     var margin: CGFloat
 
     var width: CGFloat { columnWidths.reduce(0, +) }
     var height: CGFloat { rowHeights.reduce(0, +) }
     /// The height of the line that holds the grid.
-    var reservedHeight: CGFloat { (height + margin * 2).rounded(.up) }
+    public var reservedHeight: CGFloat { (height + margin * 2).rounded(.up) }
 }
 
 enum ColumnAlignment {
@@ -35,7 +39,7 @@ enum ColumnAlignment {
     }
 }
 
-enum TableLayout {
+public enum TableLayout {
 
     // MARK: - Parsing
 
@@ -134,7 +138,7 @@ enum TableLayout {
             }
         }
 
-        let padding = NSSize(width: (theme.baseSize * 0.7).rounded(), height: (theme.baseSize * 0.4).rounded())
+        let padding = CGSize(width: (theme.baseSize * 0.7).rounded(), height: (theme.baseSize * 0.4).rounded())
         let widths = columnWidths(for: cells, columns: columns, padding: padding.width, available: availableWidth)
         let heights = cells.map { row in
             zip(row, widths).map { cell, width in
@@ -189,8 +193,8 @@ enum TableLayout {
 
         if isHeader {
             result.enumerateAttribute(.font, in: full) { value, sub, _ in
-                let font = (value as? NSFont) ?? theme.baseFont
-                result.addAttribute(.font, value: theme.applying(traits: .bold, to: font), range: sub)
+                let font = (value as? PlatformFont) ?? theme.baseFont
+                result.addAttribute(.font, value: theme.applying(traits: Platform.boldTrait, to: font), range: sub)
             }
         }
         return result
@@ -238,8 +242,8 @@ enum TableLayout {
 
     private static func singleLineWidth(_ string: NSAttributedString) -> CGFloat {
         guard string.length > 0 else { return 0 }
-        return string.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
-                                   options: [.usesLineFragmentOrigin]).width
+        return string.boundingRect(with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
+                                   options: [.usesLineFragmentOrigin], context: nil).width
     }
 
     private static func longestWordWidth(_ string: NSAttributedString) -> CGFloat {
@@ -257,26 +261,27 @@ enum TableLayout {
     }
 
     private static func measuredHeight(_ string: NSAttributedString, width: CGFloat, theme: MarkdownTheme) -> CGFloat {
-        guard string.length > 0 else { return theme.baseFont.boundingRectForFont.height * 0.75 }
-        return string.boundingRect(with: NSSize(width: max(1, width), height: .greatestFiniteMagnitude),
-                                   options: [.usesLineFragmentOrigin, .usesFontLeading]).height.rounded(.up)
+        guard string.length > 0 else { return Platform.lineHeight(of: theme.baseFont) * 0.75 }
+        return string.boundingRect(with: CGSize(width: max(1, width), height: .greatestFiniteMagnitude),
+                                   options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil).height.rounded(.up)
     }
 
     // MARK: - Drawing
 
     /// Paints `grid` with its top-left corner at `origin`.
-    static func draw(_ grid: TableGrid, at origin: NSPoint) {
-        let frame = NSRect(x: origin.x, y: origin.y, width: grid.width, height: grid.height)
+    public static func draw(_ grid: TableGrid, at origin: CGPoint) {
+        let frame = CGRect(x: origin.x, y: origin.y, width: grid.width, height: grid.height)
         guard frame.width > 0, frame.height > 0 else { return }
-        let outline = NSBezierPath(roundedRect: frame.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+        let outline = Platform.roundedPath(frame.insetBy(dx: 0.5, dy: 0.5), radius: 6)
 
-        NSGraphicsContext.saveGraphicsState()
+        let context = Platform.currentCGContext
+        context?.saveGState()
         outline.addClip()
 
         // Header band.
         if let headerHeight = grid.rowHeights.first {
             MarkdownTheme.codeBackground.setFill()
-            NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: headerHeight).fill()
+            PlatformBezierPath(rect: CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: headerHeight)).fill()
         }
 
         // Rules between rows, stronger under the header.
@@ -285,7 +290,7 @@ enum TableLayout {
             y += height
             guard index < grid.rowHeights.count - 1 else { break }
             (index == 0 ? MarkdownTheme.marker : MarkdownTheme.separator).setFill()
-            NSRect(x: frame.minX, y: y - 0.5, width: frame.width, height: 1).fill()
+            PlatformBezierPath(rect: CGRect(x: frame.minX, y: y - 0.5, width: frame.width, height: 1)).fill()
         }
 
         // Rules between columns.
@@ -293,7 +298,7 @@ enum TableLayout {
         var x = frame.minX
         for width in grid.columnWidths.dropLast() {
             x += width
-            NSRect(x: x - 0.5, y: frame.minY, width: 1, height: frame.height).fill()
+            PlatformBezierPath(rect: CGRect(x: x - 0.5, y: frame.minY, width: 1, height: frame.height)).fill()
         }
 
         // Cells.
@@ -301,14 +306,14 @@ enum TableLayout {
         for (row, height) in zip(grid.cells, grid.rowHeights) {
             x = frame.minX
             for (cell, width) in zip(row, grid.columnWidths) {
-                let box = NSRect(x: x + grid.padding.width, y: y + grid.padding.height,
+                let box = CGRect(x: x + grid.padding.width, y: y + grid.padding.height,
                                  width: width - grid.padding.width * 2, height: height - grid.padding.height * 2)
-                cell.draw(with: box, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
+                cell.draw(with: box, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
                 x += width
             }
             y += height
         }
-        NSGraphicsContext.restoreGraphicsState()
+        context?.restoreGState()
 
         MarkdownTheme.separator.setStroke()
         outline.lineWidth = 1

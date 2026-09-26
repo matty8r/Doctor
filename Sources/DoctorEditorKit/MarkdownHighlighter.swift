@@ -1,10 +1,14 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import DoctorMarkdown
 
 /// Block-level decorations the layout manager draws behind the text: the things
 /// that make preview mode look rendered rather than merely coloured.
-struct BlockDecoration {
-    enum Style: Equatable {
+public struct BlockDecoration {
+    public enum Style: Equatable {
         case codeBlock(language: String)
         case quote(depth: Int)
         case rule
@@ -13,13 +17,13 @@ struct BlockDecoration {
         /// A table drawn as a grid, in the line the first row reserves for it.
         case grid(TableGrid)
     }
-    var range: NSRange
-    var style: Style
+    public var range: NSRange
+    public var style: Style
 }
 
-struct HighlightResult {
-    var concealed: [NSRange]
-    var decorations: [BlockDecoration]
+public struct HighlightResult {
+    public var concealed: [NSRange]
+    public var decorations: [BlockDecoration]
 }
 
 /// Turns Markdown source into a styled `NSTextStorage` in place.
@@ -27,15 +31,15 @@ struct HighlightResult {
 /// This runs on every keystroke, so it does one linear pass for block structure
 /// and one regex pass per text-bearing line. On documents past a few hundred
 /// kilobytes the inline pass is dropped rather than allowed to stutter.
-enum MarkdownHighlighter {
+public enum MarkdownHighlighter {
 
-    static let inlinePassLimit = 400_000
+    public static let inlinePassLimit = 400_000
 
-    static func highlight(
+    public static func highlight(
         storage: NSTextStorage,
         mode: EditorMode,
         revealRange: NSRange,
-        settings: AppSettings,
+        settings: any MarkdownThemeSettings,
         containerWidth: CGFloat = 0
     ) -> HighlightResult {
         let theme = MarkdownTheme(settings: settings, mode: mode)
@@ -339,8 +343,8 @@ enum MarkdownHighlighter {
         ]
     }
 
-    private static func labelFont(_ theme: MarkdownTheme) -> NSFont {
-        NSFont.monospacedSystemFont(ofSize: theme.baseSize * 0.8, weight: .medium)
+    private static func labelFont(_ theme: MarkdownTheme) -> PlatformFont {
+        PlatformFont.monospacedSystemFont(ofSize: theme.baseSize * 0.8, weight: .medium)
     }
 
     private static func inlineEligible(_ kind: LineKind) -> Bool {
@@ -374,9 +378,9 @@ enum MarkdownHighlighter {
         let content = span.content
         guard content.location != NSNotFound, content.length >= 0 else { return }
 
-        func currentFont(at range: NSRange) -> NSFont {
+        func currentFont(at range: NSRange) -> PlatformFont {
             guard range.length > 0,
-                  let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
+                  let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? PlatformFont
             else { return theme.baseFont }
             return font
         }
@@ -388,13 +392,13 @@ enum MarkdownHighlighter {
             storage.addAttribute(.backgroundColor, value: MarkdownTheme.codeBackground, range: span.range)
 
         case .strong:
-            storage.addAttribute(.font, value: theme.applying(traits: .bold, to: currentFont(at: content)), range: content)
+            storage.addAttribute(.font, value: theme.applying(traits: Platform.boldTrait, to: currentFont(at: content)), range: content)
 
         case .emphasis:
-            storage.addAttribute(.font, value: theme.applying(traits: .italic, to: currentFont(at: content)), range: content)
+            storage.addAttribute(.font, value: theme.applying(traits: Platform.italicTrait, to: currentFont(at: content)), range: content)
 
         case .strongEmphasis:
-            let font = theme.applying(traits: [.bold, .italic], to: currentFont(at: content))
+            let font = theme.applying(traits: [Platform.boldTrait, Platform.italicTrait], to: currentFont(at: content))
             storage.addAttribute(.font, value: font, range: content)
 
         case .strikethrough:

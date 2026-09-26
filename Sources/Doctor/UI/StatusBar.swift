@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+import DoctorEditorKit
 /// A quiet line of counts under the text. The mode switch lives in the toolbar
 /// and the file's location in the title bar, so this carries nothing else.
 struct StatusBar: View {

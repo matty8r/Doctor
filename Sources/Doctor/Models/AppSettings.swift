@@ -1,30 +1,8 @@
 import AppKit
 import SwiftUI
+import DoctorEditorKit
 
-/// How the editor displays the document. There are only two, on purpose:
-/// live preview *is* the reading experience, it just happens to be editable.
-enum EditorMode: String, CaseIterable, Identifiable, Codable {
-    case preview
-    case source
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .preview: return "Preview"
-        case .source: return "Source"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .preview: return "doc.richtext"
-        case .source: return "chevron.left.forwardslash.chevron.right"
-        }
-    }
-
-    var toggled: EditorMode { self == .preview ? .source : .preview }
-}
+// EditorMode now lives in DoctorEditorKit, shared with iOS.
 
 enum AppTheme: String, CaseIterable, Identifiable, Codable {
     case system
@@ -52,7 +30,7 @@ enum AppTheme: String, CaseIterable, Identifiable, Codable {
 
 /// User preferences, backed by `UserDefaults` and published so SwiftUI and the
 /// AppKit editor both react to changes.
-final class AppSettings: ObservableObject {
+final class AppSettings: ObservableObject, MarkdownThemeSettings {
     static let shared = AppSettings()
 
     private enum Key {

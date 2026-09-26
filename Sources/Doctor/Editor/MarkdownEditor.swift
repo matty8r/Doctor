@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+import DoctorEditorKit
 /// Lets menu commands and the cheat sheet reach the editor in the front window.
 final class EditorBridge {
     static let shared = EditorBridge()
@@ -313,6 +314,10 @@ struct MarkdownEditor: NSViewRepresentable {
             )
             highlightedWidth = textView.textContainer?.size.width ?? 0
             layoutManager.update(concealed: result.concealed, decorations: result.decorations)
+            // Decorations are painted, not laid out, so they need an explicit
+            // redraw — the layout manager itself is cross-platform now and
+            // can't reach for `firstTextView` the way AppKit alone could.
+            textView.needsDisplay = true
 
             let theme = MarkdownTheme(settings: settings, mode: document.mode)
             textView.typingAttributes = [

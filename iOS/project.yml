@@ -53,6 +53,10 @@ targets:
       path: Doctor/Info.plist
       properties:
         UILaunchScreen: {}
+        # Only standard Apple networking (CloudKit) — exempt from export
+        # compliance, so TestFlight builds don't sit waiting on App Store
+        # Connect's encryption question before testers can install them.
+        ITSAppUsesNonExemptEncryption: false
 schemes:
   Doctor:
     build:

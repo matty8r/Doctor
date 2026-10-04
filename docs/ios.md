@@ -8,6 +8,10 @@ macOS app that consumes it renders pixel-identical to before the refactor
 (checked against the same table/code-block/rule test files used to catch the
 1.2.x bugs). See "What actually moved" below.
 
+**2026-10-04: first build uploaded to App Store Connect / TestFlight.**
+`iOS/release.sh` is the whole pipeline now — archive, export, upload — see
+"Portal work" below for everything that first run took.
+
 ## Decisions
 
 | Question | Decision |
@@ -228,12 +232,67 @@ to `*word*` with the markers revealed (caret on that line) and the selection
 preserved around the word — the trickiest path (toggle-wrap on a real
 selection) working end to end, not just compiling.
 
-**Portal work, not code** — needed before this leaves Simulator: the
-existing `com.matty8r.Doctor` App ID needs iCloud and Push Notifications
-capabilities added on the Developer Portal (it has neither today — only the
-macOS app has used this App ID so far), and a provisioning profile appropriate
-to wherever this goes next (TestFlight or a device build). Nothing here can
-be done from the command line.
+**Portal work — done (2026-10-04), and shipped to TestFlight.** `iOS/
+release.sh` now archives, signs, exports and uploads in one run. What that
+took, worth keeping as a record since most of it was first-time setup that
+won't repeat the same way twice:
+
+- **`com.matty8r.Doctor` didn't exist as an Identifier at all** — not "needed
+  capabilities added," genuinely didn't exist. Developer ID signing (what the
+  Mac app uses) never registers one; only App Store/TestFlight distribution
+  does. Created fresh: App ID with iCloud (CloudKit) + Push Notifications,
+  plus the `iCloud.com.matty8r.Doctor` container.
+- **The container didn't attach to the App ID on the first save** — the
+  portal accepted the edit but the container checkbox came back unticked.
+  Had to go back in and re-tick it.
+- **The first downloaded distribution profile was stale from that failure**:
+  generated before the container actually attached, so its own
+  `com.apple.developer.icloud-container-identifiers` entitlement came back
+  an empty array even though the capability showed enabled. Caught by
+  inspecting the downloaded `.mobileprovision` directly (`security cms -D`)
+  before trusting it, and confirmed the hard way — `xcodebuild archive`
+  itself refused it with "doesn't support the iCloud…Container." Fix: edit
+  the App ID, confirm the container is really there, then re-save the
+  profile (not just re-download the same one) so it regenerates against the
+  current capabilities, and re-download that.
+- **Automatic signing (`-allowProvisioningUpdates`) couldn't help**: this
+  machine has no Apple ID signed into Xcode's own Accounts preferences, so
+  automatic signing has nothing to authenticate a portal refresh with and
+  silently keeps reusing a stale cached wildcard profile instead — the
+  actual error, once it surfaced, was "No Accounts: Add a new account in
+  Accounts settings." `release.sh` uses manual signing throughout instead:
+  an explicit certificate and profile name, no portal round-trip needed at
+  build time.
+- **The app icon was a placeholder with no image in it** — fine for
+  Simulator, which doesn't check; App Store validation does, and rejected
+  the first upload over it (`CFBundleIconName` / missing 120×120 icon).
+  `Scripts/GenerateIOSIcon.swift` draws the same capsule-split mark as the
+  Mac icon (`Scripts/GenerateIcon.swift`) adapted for iOS's edge-to-edge
+  convention — no inset plate, no self-rounded corners, one opaque
+  1024×1024 PNG (modern asset catalogs need only that single size; iOS
+  generates every other rasterization itself, and requires no alpha
+  channel, unlike the Mac icon).
+- **`aps-environment` needed no manual fix**, unlike the Mac apps' Developer
+  ID release scripts (which re-sign specifically to restore it after
+  Xcode's own export drops it). Checked directly on the signed binary
+  (`codesign -d --entitlements :-`) rather than assumed: Xcode resolved it
+  to `production` correctly during a plain archive, matching what the
+  distribution profile actually provides.
+- **An App Store Connect app record had to be created separately** from the
+  Developer Portal App ID — `xcrun altool --upload-app` refuses an upload
+  for a bundle ID with no App Store Connect app behind it yet
+  ("Unable to find Apple ID for Bundle ID"). One-time, via Apps → + → New
+  App in App Store Connect.
+- **Signing and upload credentials were both already on this machine** from
+  prior work on other apps in this account (Feed Me, Seymour!, Sidetable):
+  an Apple Distribution certificate, and an App Store Connect API key
+  (`~/.appstoreconnect/private_keys/`). Neither needed setting up fresh —
+  only the Issuer ID, which isn't stored anywhere locally, had to come from
+  the account holder (App Store Connect → Users and Access → Integrations).
+- **Export compliance** is headed off for next time rather than answered
+  per-build: `ITSAppUsesNonExemptEncryption: false` in `project.yml`'s Info
+  .plist properties, since Doctor uses only standard Apple networking
+  (CloudKit) and genuinely qualifies for the exemption.
 
 **Import path.** A share extension ("Open in Doctor") is still the cleanest
 way something else hands Doctor a file, and is still not built. Not blocking

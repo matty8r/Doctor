@@ -33,6 +33,10 @@ struct ContentView: View {
             }
         }
         .navigationTitle("Doctor")
+        // Centered at the top, matching Feed Me, Seymour! and Sidetable's own
+        // SidebarView convention — .inline centers; the default .large mode
+        // left-aligns a big title instead.
+        .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Document.self) { document in
             DocumentDetailView(document: document)
         }

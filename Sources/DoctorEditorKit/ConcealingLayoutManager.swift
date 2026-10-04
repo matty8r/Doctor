@@ -220,7 +220,7 @@ public final class ConcealingLayoutManager: NSLayoutManager {
                                             container: container, indentWidth: indentWidth) else { continue }
                 let box = CGRect(
                     x: gap.left + (indentWidth - boxSize) / 2,
-                    y: gap.line.minY + (gap.line.height - boxSize) / 2,
+                    y: gap.verticalCenter - boxSize / 2,
                     width: boxSize,
                     height: boxSize
                 )
@@ -231,7 +231,7 @@ public final class ConcealingLayoutManager: NSLayoutManager {
                                             container: container, indentWidth: indentWidth) else { continue }
                 let dot = CGRect(
                     x: gap.left + (indentWidth - dotSize) / 2,
-                    y: gap.line.minY + (gap.line.height - dotSize) / 2,
+                    y: gap.verticalCenter - dotSize / 2,
                     width: dotSize,
                     height: dotSize
                 )
@@ -249,10 +249,18 @@ public final class ConcealingLayoutManager: NSLayoutManager {
     /// its own to find a line fragment from, so `.checkbox` and `.bullet`
     /// both anchor on the content instead). `left` is the gap's left edge;
     /// combine with the decoration's own `indentWidth` to center a glyph in
-    /// it, the same way for either style.
+    /// it horizontally. `verticalCenter` is where to center one vertically —
+    /// deliberately *not* the line fragment's own midpoint: that box
+    /// includes `lineHeightMultiple` leading, which isn't symmetric around
+    /// the glyphs themselves, and centering a checkbox or dot against it
+    /// visibly floats the glyph above the text it labels (seen directly on
+    /// a real device, reported as "I'd expect the checkboxes to be center
+    /// aligned with the text"). Centered on the text's cap-height band
+    /// instead -- baseline up by half the font's cap height -- which is
+    /// where a reader's eye actually reads text as vertically centered.
     private func reservedGap(
         forGlyphRange glyphRange: NSRange, origin: CGPoint, container: NSTextContainer, indentWidth: CGFloat
-    ) -> (left: CGFloat, line: CGRect)? {
+    ) -> (left: CGFloat, verticalCenter: CGFloat)? {
         guard glyphRange.length > 0 else { return nil }
         var lineRect = lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
         lineRect.origin.x += origin.x
@@ -261,7 +269,11 @@ public final class ConcealingLayoutManager: NSLayoutManager {
         let headIndent = (textStorage?.attribute(.paragraphStyle, at: charIndex, effectiveRange: nil)
             as? NSParagraphStyle)?.headIndent ?? indentWidth
         let left = origin.x + container.lineFragmentPadding + headIndent - indentWidth
-        return (left, lineRect)
+
+        let baselineY = lineRect.minY + location(forGlyphAt: glyphRange.location).y
+        let font = textStorage?.attribute(.font, at: charIndex, effectiveRange: nil) as? PlatformFont
+        let capHeight = font?.capHeight ?? (lineRect.height * 0.5)
+        return (left, baselineY - capHeight / 2)
     }
 
     /// The task whose drawn checkbox contains `point` (text-container
@@ -283,7 +295,7 @@ public final class ConcealingLayoutManager: NSLayoutManager {
             else { continue }
             let box = CGRect(
                 x: gap.left + (indentWidth - boxSize) / 2,
-                y: gap.line.minY + (gap.line.height - boxSize) / 2,
+                y: gap.verticalCenter - boxSize / 2,
                 width: boxSize,
                 height: boxSize
             ).insetBy(dx: -8, dy: -8)

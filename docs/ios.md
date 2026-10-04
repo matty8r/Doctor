@@ -232,6 +232,37 @@ to `*word*` with the markers revealed (caret on that line) and the selection
 preserved around the word — the trickiest path (toggle-wrap on a real
 selection) working end to end, not just compiling.
 
+**Bug (2026-10-04): the seven section commands silently did nothing on a
+blank line.** Reported as "lists don't render" — they do; proven by
+rendering actual `- item`/`1. item`/`- [ ] item` text through the shared
+engine (`DoctorEditorKit`, unchanged, identical on both platforms) and
+getting correctly indented, correctly coloured output. The real bug was one
+level earlier: tapping Heading/Bullet/Numbered/Task/Quote with nothing typed
+yet — the ordinary "tap the button, *then* start typing" order — inserted
+nothing at all, so there was never any list text for the renderer to
+render. `prefixLines`/`numberLines`/`taskLines`/`heading` all skip blank
+lines by design, to leave a separator line alone inside a multi-line
+selection — correct there, wrong when the blank line *is* the entire
+selection, which is the common case for these seven specifically (the six
+inline commands and code-block/divider were never affected: wrapping an
+empty selection, or inserting a fenced block, was never conditional on
+existing text).
+
+Fixed with one new case per function, `insertAtBlankLine`, used only when
+the whole target is a single blank line: insert the prefix and place the
+caret right after it, not selecting what was just inserted (selecting it
+would delete the prefix on the next keystroke). Verified by direct testing
+of the pure function, not just by building — simulator GUI automation was
+unavailable this session (`Simulator.app` unreachable mid what looks like a
+macOS/Xcode update), so each of the 14 commands was run against an empty
+document and confirmed to insert correctly with the caret positioned to
+continue typing, and the existing toggle-on/off and multi-line behavior
+(including a selection spanning a real blank separator line, which must
+still be skipped) was re-run and confirmed unchanged. Worth a real
+on-screen pass once Simulator's GUI is reachable again — this verification
+is strong for "does the right text get produced," not a substitute for
+seeing it typed.
+
 **Portal work — done (2026-10-04), and shipped to TestFlight.** `iOS/
 release.sh` now archives, signs, exports and uploads in one run. What that
 took, worth keeping as a record since most of it was first-time setup that

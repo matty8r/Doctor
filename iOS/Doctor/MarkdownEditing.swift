@@ -183,13 +183,35 @@ enum MarkdownEditing {
         )
     }
 
+    /// Tapping a section command (heading, list, task, quote) with nothing
+    /// typed yet — the ordinary "tap the button, then start typing" order —
+    /// used to insert nothing at all: every one of these treated a blank
+    /// line as a separator to leave alone, which is right mid-selection but
+    /// wrong when the blank line *is* the whole selection. This is the one
+    /// case that instead inserts the prefix and puts the caret right after
+    /// it, not selecting what was just inserted — selecting it would delete
+    /// the prefix on the very next keystroke.
+    private static func insertAtBlankLine(_ prefix: String, _ text: String, _ range: NSRange) -> Result {
+        let out = NSMutableString(string: text)
+        out.insert(prefix, at: range.location)
+        return Result(
+            text: out as String,
+            selection: NSRange(location: range.location + (prefix as NSString).length, length: 0)
+        )
+    }
+
     private static func prefixLines(_ prefix: String, _ text: String, _ selection: NSRange) -> Result {
         let (range, lines, trailing) = lineBlock(text, selection)
         let meaningful = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
+        guard !meaningful.isEmpty else {
+            if lines.count == 1 { return insertAtBlankLine(prefix, text, range) }
+            return replace(text, range, lines.map { prefix + $0 }, trailing)
+        }
+
         // Toggle off only when every line already carries the prefix, so a
         // partly-formatted selection completes rather than clears.
-        let allPrefixed = !meaningful.isEmpty && meaningful.allSatisfy { $0.hasPrefix(prefix) }
-
+        let allPrefixed = meaningful.allSatisfy { $0.hasPrefix(prefix) }
         let updated = lines.map { line -> String in
             if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }
             if allPrefixed { return String(line.dropFirst(prefix.count)) }
@@ -212,7 +234,12 @@ enum MarkdownEditing {
         }
 
         let meaningful = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let allNumbered = !meaningful.isEmpty && meaningful.allSatisfy { numberedLength($0) != nil }
+        guard !meaningful.isEmpty else {
+            if lines.count == 1 { return insertAtBlankLine("1. ", text, range) }
+            var counter = 0
+            return replace(text, range, lines.map { _ in counter += 1; return "\(counter). " }, trailing)
+        }
+        let allNumbered = meaningful.allSatisfy { numberedLength($0) != nil }
 
         var counter = 0
         let updated = lines.map { line -> String in
@@ -244,7 +271,11 @@ enum MarkdownEditing {
         }
 
         let meaningful = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let allTasks = !meaningful.isEmpty && meaningful.allSatisfy { taskPrefixLength($0) != nil }
+        guard !meaningful.isEmpty else {
+            if lines.count == 1 { return insertAtBlankLine(unchecked, text, range) }
+            return replace(text, range, lines.map { unchecked + $0 }, trailing)
+        }
+        let allTasks = meaningful.allSatisfy { taskPrefixLength($0) != nil }
 
         let updated = lines.map { line -> String in
             if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }
@@ -262,6 +293,12 @@ enum MarkdownEditing {
     private static func heading(_ level: Int, _ text: String, _ selection: NSRange) -> Result {
         let (range, lines, trailing) = lineBlock(text, selection)
         let marker = String(repeating: "#", count: level) + " "
+
+        let meaningful = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !meaningful.isEmpty else {
+            if lines.count == 1 { return insertAtBlankLine(marker, text, range) }
+            return replace(text, range, lines.map { marker + $0 }, trailing)
+        }
 
         let updated = lines.map { line -> String in
             if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }

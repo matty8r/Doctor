@@ -95,15 +95,53 @@ predicted — see "What actually moved" above for exactly what each one took.
 | `ExportService` | ~180 | **Not v1.** No print/PDF export until there's an editor to export from. |
 | `ObsidianService` | ~130 | **Not v1.** Deferred per the Sync/Obsidian decisions above. |
 
-## Open problems
+## The CloudKit library (2026-10-03) — built
 
-**The CloudKit library itself** is the new critical-path work the "no sync"
-plan didn't have: a `CKRecord` schema (title, body, modified date — body as a
-`String` field vs. a `CKAsset` past some size threshold, not yet decided), a
-private-database CRUD layer, and enough conflict handling that two devices
-editing offline don't clobber each other silently. Feed Me, Seymour! and the
-Studio apps already have working CloudKit patterns in this account to start
-from rather than inventing the entitlements/provisioning dance from scratch.
+Not raw `CKRecord` CRUD after all. Feed Me, Seymour!'s `Persistence.swift`
+uses SwiftData with a CloudKit-backed `ModelConfiguration`
+(`cloudKitDatabase: .automatic`) — built on `NSPersistentCloudKitContainer`
+under the hood, same as Core Data's CloudKit integration — and that's a far
+smaller amount of code than hand-rolling CKRecord save/fetch/delete plus a
+sync coordinator. Doctor uses the same pattern, simpler by one tier:
+
+- **One model, not two.** FMS splits a local-only store (article bodies,
+  re-fetchable from the feed) from a small CloudKit-mirrored one (read/star
+  state) and reconciles them by hand (`SyncCoordinator.swift`) because
+  SwiftData won't let a CloudKit-backed model relate to a local-only one.
+  A Doctor document has no "origin to re-fetch from" — the body *is* the
+  content — so there's nothing to split. `iOS/Doctor/Document.swift` is a
+  single `@Model`, the whole store is one `ModelConfiguration`.
+- **Body is a plain `String`.** The "`CKAsset` past some threshold" question
+  the port map raised turned out not to need an answer yet: a Markdown note
+  is at most a few hundred KB, comfortably inside what a CloudKit record
+  field holds, and CloudKit externalizes a field to its own asset storage on
+  its own if one ever got large enough to need it. Revisit only if that
+  stops being true in practice.
+- **No manual conflict layer.** `modifiedAt` exists as a last-writer-wins
+  clock, but nothing in Doctor's code resolves conflicts — SwiftData's
+  CloudKit backing does that at the whole-record level by itself, the way
+  Core Data + CloudKit always has. For one person's own notes synced across
+  their own devices, "whichever device saved last wins" is the right
+  default; a real three-way text merge isn't attempted and shouldn't be.
+- **`Persistence.swift`** mirrors FMS's fallback ladder (cloud-backed →
+  local-only if the store can't open with CloudKit → in-memory as a last
+  resort rather than a crash at launch) and its `seedIfEmpty` naming
+  convention, for a one-document seed so a fresh install isn't empty.
+- **`ComposeView` is not `MarkdownEditing`.** It's a bare SwiftUI `TextField`
+  + `TextEditor` — no formatting commands, no live concealment, no syntax
+  highlighting while typing — and exists only so content can get into the
+  library before a share extension does. Don't confuse it with the deferred
+  "editing on a phone" problem below; it's a different, much smaller thing,
+  there only because the library needed *some* way in to be testable at all.
+
+Verified live in Simulator, not just by building: empty state → seeded
+document in the list → tapped open → rendered via `ReaderView` (table, code
+block, rule, same as the earlier screenshot) → "+" made a new one → typed a
+title and body through hardware-keyboard passthrough → Done → back in the
+list, sorted newest-edited-first, the seeded document's own `modifiedAt`
+untouched by editing the other one.
+
+## Open problems
 
 **Project structure — decided.** XcodeGen (already on this machine), generating
 an Xcode project under `iOS/` from a checked-in `project.yml`, alongside —
@@ -113,5 +151,19 @@ package dependencies.
 
 **Editing on a phone** is still not attempted, and that's still deliberate:
 reading is most of real use, and v1 is a reader. `MarkdownEditing` and a real
-`UITextView` input story are follow-on work once the reading experience and
-the CloudKit library both hold up.
+`UITextView` input story — live concealment, formatting commands, the actual
+"editing" experience — are follow-on work once the reading experience and
+the CloudKit library both hold up. `ComposeView`'s plain-text entry is not a
+first draft of this; it solves a different, smaller problem (see above).
+
+**Portal work, not code** — needed before this leaves Simulator: the
+existing `com.matty8r.Doctor` App ID needs iCloud and Push Notifications
+capabilities added on the Developer Portal (it has neither today — only the
+macOS app has used this App ID so far), and a provisioning profile appropriate
+to wherever this goes next (TestFlight or a device build). Nothing here can
+be done from the command line.
+
+**Import path.** A share extension ("Open in Doctor") is still the cleanest
+way something else hands Doctor a file, and is still not built. Not blocking
+anything — `ComposeView` covers "how does content get in" well enough to
+keep testing with.

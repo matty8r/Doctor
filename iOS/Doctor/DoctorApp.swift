@@ -7,9 +7,9 @@ struct DoctorApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                ContentView()
-            }
+            // Owns its own NavigationStack (and the path binding newDocument()
+            // pushes into), rather than one wrapped around it here.
+            ContentView()
         }
         .modelContainer(store.container)
     }

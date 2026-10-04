@@ -1,18 +1,37 @@
 import DoctorEditorKit
 
-/// The reader's own minimal settings, conforming to the same protocol
-/// `AppSettings` does on macOS — so `MarkdownTheme` and `MarkdownHighlighter`
-/// need no iOS-specific branch. There's no font picker, no preferences
-/// screen yet; this is exactly what v1 needs and no more. See docs/ios.md.
+/// The two font choices offered on iOS — deliberately smaller than the Mac
+/// app's full font-family picker (`SettingsView.swift`'s `FontPicker`, any
+/// installed family). "New York" isn't a nameable font on either platform —
+/// `PlatformFont(name: "New York", size:)` returns `nil`, verified against
+/// both SDKs directly — so this goes through `Platform.systemFont(design:)`
+/// rather than the name-based path `AppSettings` uses.
+enum ReaderFont: String, CaseIterable, Identifiable {
+    case sans, serif
+
+    var id: String { rawValue }
+    var title: String { self == .sans ? "Sans Serif" : "Serif" }
+    var design: Platform.FontDesign { self == .sans ? .default : .serif }
+}
+
+/// What `MarkdownTheme` reads on iOS. A value type filled in from
+/// `ReaderPreferences` each time it's needed, the same role `AppSettings`
+/// plays on macOS but without the UserDefaults/menu-bar machinery — that
+/// lives in `ReaderPreferences`, the thing that's actually persisted.
 struct ReaderSettings: MarkdownThemeSettings {
-    var previewFontName = ""
-    var previewFontSize = 18.0
-    var sourceFontSize = 15.0
-    var lineSpacing = 1.4
-    var hideSyntax = true
+    var font: ReaderFont = .sans
+    var previewFontSize: Double = 18
+    var sourceFontSize: Double = 15
+    var lineSpacing: Double = 1.4
+    var hideSyntax: Bool = true
+
+    /// Always empty: the design-based path below is what carries the font
+    /// choice on iOS, not a name `MarkdownTheme` would try to look up.
+    var previewFontName: String { "" }
+    var previewFontDesign: Platform.FontDesign { font.design }
 
     var previewBodyFont: PlatformFont {
-        PlatformFont.systemFont(ofSize: previewFontSize)
+        Platform.systemFont(ofSize: previewFontSize, weight: .regular, design: font.design)
     }
 
     var sourceFont: PlatformFont {

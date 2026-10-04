@@ -61,13 +61,10 @@ the existing macOS `Doctor` target and, eventually, the iOS app):
   `MarkdownThemeSettings` (font/size/spacing/hideSyntax), that `AppSettings`
   conforms to and that iOS's reader settings — whatever shape those take —
   will conform to separately, without either side depending on the other.
-- **`MarkdownEditing` did not move**, on purpose. It works on `NSTextView`
-  directly, and porting it means solving `EditorTextView`'s whole input-handling
-  story on `UITextView`. Given the "reading is 90% of real use" premise below,
-  v1 doesn't need it: the shared engine can host a *read-only* `UITextView`
-  (`isEditable = false`, `isSelectable = true`, built the manual TextKit-1 way,
-  same as macOS's `NSTextView(frame:textContainer:)`) with no editing commands
-  at all.
+- **`MarkdownEditing` (the Format-menu commands) still hasn't moved** — see
+  "Editing in place" below for what *did*: the live-preview-is-editable
+  mechanic itself, which is a different, smaller piece of Mac's editor
+  (`MarkdownEditor`'s Coordinator, not `MarkdownEditing.swift`).
 - **Verification, not assumption:** `xcrun --sdk iphonesimulator swiftc
   -typecheck` against the arm64-ios17.0-simulator target is what actually
   caught all of the above — not reading the two SDKs' headers side by side.
@@ -89,10 +86,10 @@ predicted — see "What actually moved" above for exactly what each one took.
 | `DoctorMarkdown` — scanner, HTML renderer, print CSS | ~1,770 | **Done — free.** Compiles for iOS unchanged; verified by SDK type-check. |
 | `MarkdownTheme`, `MarkdownHighlighter`, `TableLayout` | ~880 | **Done — shimmed.** Now living in `DoctorEditorKit`. Five real API differences, all isolated in `PlatformTypes.swift`. |
 | `ConcealingLayoutManager` | ~240 | **Done — ported.** `NSLayoutManager.setGlyphs`/`drawBackground(forGlyphRange:at:)` do have identical signatures on iOS, confirmed by the SDK type-check, not just by reading docs. |
-| `MarkdownEditing` | ~300 | **Not moving for v1.** See "What actually moved" — v1 is read-only, so this has no iOS consumer yet. |
-| `EditorTextView`, `MarkdownEditor` | ~690 (mac equivalent) | **New, not a port.** A read-only `UITextView` hosting `ConcealingLayoutManager`, built manually (TextKit 1, not the iOS 16+ default) the same way macOS does it. |
-| `DocumentStore`, `AppDelegate`, `DoctorCommands`, tab UI | ~790 | **Dropped**, replaced by a CloudKit-backed library (list view + a `CKRecord` "Document" type), which didn't exist in the "no sync" version of this plan at all — genuinely new, not a mac equivalent to point at. |
-| `ExportService` | ~180 | **Not v1.** No print/PDF export until there's an editor to export from. |
+| `MarkdownEditing` (the Format-menu commands — bold/italic shortcuts, list continuation, heading levels) | ~300 | **Still not moving.** `DocumentEditor` ported the *live-preview-is-editable* mechanic (concealment follows the caret, typing re-highlights) from `MarkdownEditor`'s Coordinator — that's a different ~150 lines, not this file. No formatting toolbar exists yet. |
+| `EditorTextView`, `MarkdownEditor` | ~690 (mac equivalent) | **Done — ported, not a straight line-for-line port.** `DocumentEditor.swift`'s Coordinator mirrors `MarkdownEditor.Coordinator` directly: `loadIfNeeded`/`highlight(immediately:)`/`textViewDidChange`/`textViewDidChangeSelection` are the same shape, same debounce window, same "which line is the caret on" logic. What didn't carry over: undo-manager-per-tab (one document per screen, `UITextView`'s own undo manager is enough), `clickedOnLink`, Obsidian's document-directory plumbing. |
+| `DocumentStore`, `AppDelegate`, `DoctorCommands`, tab UI | ~790 | **Dropped**, replaced by the CloudKit-backed library (list view + a SwiftData `Document` model) — genuinely new, no mac equivalent to point at. |
+| `ExportService` | ~180 | **Not v1.** No print/PDF export yet. |
 | `ObsidianService` | ~130 | **Not v1.** Deferred per the Sync/Obsidian decisions above. |
 
 ## The CloudKit library (2026-10-03) — built
@@ -141,6 +138,60 @@ title and body through hardware-keyboard passthrough → Done → back in the
 list, sorted newest-edited-first, the seeded document's own `modifiedAt`
 untouched by editing the other one.
 
+**Superseded the same day** — see the next section. `ComposeView` and the
+read-only `ReaderView` it describes are both gone.
+
+## Editing in place (2026-10-03) — built
+
+The reading screen *is* the editing screen now, the way macOS's Preview mode
+always has been — not a separate plain-text compose sheet. `ComposeView.swift`
+is deleted; `ReaderView.swift` became `DocumentEditor.swift`, with
+`isEditable = true` and a `UITextViewDelegate` Coordinator ported from
+`MarkdownEditor`'s (see the port-map row above). Title and body are both
+`@Bindable`-bound straight to the SwiftData `Document`, so typing anywhere —
+title included — writes directly into the CloudKit-backed model; no sheet, no
+separate save step beyond SwiftData's own autosave plus an explicit
+`context.save()` on `.onDisappear`.
+
+**A raw/interpreted switch**, matching macOS's Preview/Source toolbar control:
+a two-icon segmented `Picker` bound to `EditorMode` (already in
+`DoctorEditorKit`, unchanged) in `DocumentDetailView`'s toolbar. Switching
+modes re-highlights immediately, same `MarkdownHighlighter.highlight(mode:)`
+call Mac's `sync(to:)` makes.
+
+**A font preference** — serif or sans, the smaller ask alongside the editing
+change. Verified before writing any product code, not assumed:
+`UIFont(name: "New York", size:)` returns `nil` on the real iOS 17 SDK, and
+so does `NSFont(name: "New York", size:)` on macOS — compiled and ran a tiny
+probe binary via `xcrun simctl spawn` to check, rather than trust memory of
+how the API works. New York exists only through the design-aware path,
+`UIFontDescriptor`/`NSFontDescriptor.withDesign(.serif)`, which resolves to
+the private `.NewYork-*` family identically on both platforms. That's now
+`Platform.systemFont(ofSize:weight:design:)` in `PlatformTypes.swift`, and a
+new `previewFontDesign` requirement on `MarkdownThemeSettings` — defaulted to
+`.default` via a protocol extension, so `AppSettings` on macOS needed no
+changes at all to keep conforming. `ReaderPreferences` (new,
+`UserDefaults`-backed, the iOS analogue of `AppSettings` minus everything
+Mac-only) persists the choice; `ReaderSettingsView` is the one-screen Form
+that sets it, deliberately much smaller than Mac's full font-family picker.
+
+**A debugging note worth keeping**: most of the "the button isn't working"
+time during this session's verification was the Simulator's own window
+silently moving between tool calls (AppleScript's reported window position
+going stale), not a code bug — confirmed by the fact that a button proven
+working minutes earlier also stopped responding, at the same old coordinates,
+at the same time. Re-fetch the window's position immediately before any
+click rather than reusing a cached one from even a few calls ago.
+
+Verified live in Simulator: concealment follows the caret exactly like
+macOS (tapped a heading, watched its `#` appear and the previous line's
+disappear), typed new text mid-document and watched it render correctly,
+force-quit and relaunched the app and confirmed the typed text survived
+(SwiftData persistence, not just in-memory state), toggled raw/interpreted
+and watched the same document switch to full source and back, and switched
+the font to Serif in Settings and watched the live preview render in New
+York.
+
 ## Open problems
 
 **Project structure — decided.** XcodeGen (already on this machine), generating
@@ -149,12 +200,12 @@ not replacing — the SwiftPM `Makefile` + `build-app.sh` macOS build. The iOS
 project depends on `DoctorMarkdown` and `DoctorEditorKit` as local Swift
 package dependencies.
 
-**Editing on a phone** is still not attempted, and that's still deliberate:
-reading is most of real use, and v1 is a reader. `MarkdownEditing` and a real
-`UITextView` input story — live concealment, formatting commands, the actual
-"editing" experience — are follow-on work once the reading experience and
-the CloudKit library both hold up. `ComposeView`'s plain-text entry is not a
-first draft of this; it solves a different, smaller problem (see above).
+**A formatting toolbar is still not attempted.** The live-preview-is-editable
+mechanic is built (see above) — what's still missing is `MarkdownEditing`'s
+actual commands: bold/italic shortcuts, heading levels, list continuation on
+Return, Tab to indent. None of that has an iOS UI yet (there's no keyboard
+shortcut story on a phone the way there is on a Mac menu bar; this needs its
+own design, likely a keyboard accessory view, not a straight port).
 
 **Portal work, not code** — needed before this leaves Simulator: the
 existing `com.matty8r.Doctor` App ID needs iCloud and Push Notifications
@@ -165,5 +216,5 @@ be done from the command line.
 
 **Import path.** A share extension ("Open in Doctor") is still the cleanest
 way something else hands Doctor a file, and is still not built. Not blocking
-anything — `ComposeView` covers "how does content get in" well enough to
-keep testing with.
+anything — the document screen's own in-place editing covers "how does
+content get in" well enough to keep testing with.

@@ -110,7 +110,7 @@ public struct MarkdownTheme {
             let descriptor = Platform.applying(Platform.boldTrait, to: custom.fontDescriptor)
             return Platform.font(descriptor: descriptor, size: size) ?? custom
         }
-        return PlatformFont.systemFont(ofSize: size, weight: weight)
+        return Platform.systemFont(ofSize: size, weight: weight, design: settings.previewFontDesign)
     }
 
     public func applying(traits: PlatformFontDescriptorTraits, to font: PlatformFont) -> PlatformFont {

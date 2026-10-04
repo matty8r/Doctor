@@ -11,6 +11,17 @@ public protocol MarkdownThemeSettings {
     var sourceFontSize: Double { get }
     var lineSpacing: Double { get }
     var hideSyntax: Bool { get }
+    /// Used only for headings' own font construction (`MarkdownTheme.
+    /// headingFont`), which doesn't go through `previewBodyFont` — everything
+    /// else that wants a serif body already gets it by implementing
+    /// `previewBodyFont` accordingly. Defaults to `.default` (no change in
+    /// behavior) so existing conformers — `AppSettings` on macOS — need no
+    /// changes at all.
+    var previewFontDesign: Platform.FontDesign { get }
+}
+
+extension MarkdownThemeSettings {
+    public var previewFontDesign: Platform.FontDesign { .default }
 }
 
 /// A fixed set of reasonable values — what the iOS reader uses today, and

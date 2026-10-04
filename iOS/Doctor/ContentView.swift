@@ -7,50 +7,58 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Document.modifiedAt, order: .reverse) private var documents: [Document]
-    @State private var composing: Document?
+    @State private var path: [Document] = []
+    @State private var showingSettings = false
+    private let preferences = ReaderPreferences.shared
 
     var body: some View {
-        Group {
-            if documents.isEmpty {
-                ContentUnavailableView(
-                    "No Documents",
-                    systemImage: "doc.text",
-                    description: Text("Tap + to write one.")
-                )
-            } else {
-                List {
-                    ForEach(documents) { document in
-                        NavigationLink(value: document) {
-                            row(for: document)
-                        }
-                        .swipeActions {
-                            Button("Edit") { composing = document }.tint(.blue)
-                            Button("Delete", role: .destructive) { delete(document) }
+        NavigationStack(path: $path) {
+            Group {
+                if documents.isEmpty {
+                    ContentUnavailableView(
+                        "No Documents",
+                        systemImage: "doc.text",
+                        description: Text("Tap + to write one.")
+                    )
+                } else {
+                    List {
+                        ForEach(documents) { document in
+                            NavigationLink(value: document) {
+                                row(for: document)
+                            }
+                            .swipeActions {
+                                Button("Delete", role: .destructive) { delete(document) }
+                            }
                         }
                     }
-                }
-                .listStyle(.plain)
-            }
-        }
-        .navigationTitle("Doctor")
-        // Centered at the top, matching Feed Me, Seymour! and Sidetable's own
-        // SidebarView convention — .inline centers; the default .large mode
-        // left-aligns a big title instead.
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: Document.self) { document in
-            DocumentDetailView(document: document)
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: newDocument) {
-                    Label("New Document", systemImage: "square.and.pencil")
+                    .listStyle(.plain)
                 }
             }
+            .navigationTitle("Doctor")
+            // Centered at the top, matching Feed Me, Seymour! and Sidetable's
+            // own SidebarView convention — .inline centers; the default
+            // .large mode left-aligns a big title instead.
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Document.self) { document in
+                DocumentDetailView(document: document)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { showingSettings = true }) {
+                        Label("Reading Settings", systemImage: "textformat.size")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: newDocument) {
+                        Label("New Document", systemImage: "square.and.pencil")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingSettings) {
+                ReaderSettingsView(preferences: preferences)
+            }
+            .onAppear { Persistence.seedIfEmpty(context) }
         }
-        .sheet(item: $composing) { document in
-            ComposeView(document: document)
-        }
-        .onAppear { Persistence.seedIfEmpty(context) }
     }
 
     private func row(for document: Document) -> some View {
@@ -65,10 +73,13 @@ struct ContentView: View {
         .padding(.vertical, 2)
     }
 
+    /// Creates the document and navigates straight into it — there's no
+    /// intermediate compose sheet to open instead, the detail screen
+    /// *is* where you write.
     private func newDocument() {
         let document = Document()
         context.insert(document)
-        composing = document
+        path.append(document)
     }
 
     private func delete(_ document: Document) {
@@ -82,7 +93,9 @@ struct ContentView: View {
     # Doctor for iPhone
 
     This is the shared rendering engine — the same theme, the same syntax \
-    highlighter, the same table layout — running on iOS.
+    highlighter, the same table layout — running on iOS. Tap anywhere in \
+    this text to edit it; the line you're on shows its raw Markdown, every \
+    other line stays rendered.
 
     ---
 
@@ -96,7 +109,7 @@ struct ContentView: View {
     | Theme + highlighter | Shimmed |
     | Layout manager | Ported |
     | CloudKit library | Here |
-    | Editing | Plain text only — v1 reads |
+    | Editing in place | Here |
 
     A fenced block, to check the panel sits snugly around it:
 
@@ -114,6 +127,6 @@ struct ContentView: View {
 }
 
 #Preview {
-    NavigationStack { ContentView() }
+    ContentView()
         .modelContainer(Persistence.makeInMemoryContainer())
 }

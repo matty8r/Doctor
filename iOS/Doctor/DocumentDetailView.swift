@@ -1,26 +1,48 @@
 import SwiftUI
 import SwiftData
+import DoctorEditorKit
 
-/// One document, rendered. The `ReaderView` here is exactly the same one
-/// `ContentView`'s old single-document screen used before the library
-/// existed — nothing about the rendering path changed, only what feeds it.
+/// One document — title and body both editable in place, no separate
+/// compose screen. `DocumentEditor` is the same engine `ContentView`'s old
+/// single-document screen proved on real hardware before the library
+/// existed; only what feeds it, and whether it's editable, changed.
 struct DocumentDetailView: View {
-    var document: Document
+    @Bindable var document: Document
     @Environment(\.modelContext) private var context
-    @State private var editing = false
+    @State private var mode: EditorMode = .preview
+    private let preferences = ReaderPreferences.shared
 
     var body: some View {
-        ReaderView(text: document.body)
-            .navigationTitle(document.displayTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Edit") { editing = true }
+        VStack(spacing: 0) {
+            TextField("Untitled", text: $document.title)
+                .font(.title2.bold())
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 4)
+            DocumentEditor(text: $document.body, mode: mode, settings: preferences.settings)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Mode", selection: $mode) {
+                    ForEach(EditorMode.allCases) { mode in
+                        Image(systemName: mode.symbol).tag(mode)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .frame(width: 100)
             }
-            .sheet(isPresented: $editing) {
-                ComposeView(document: document)
-            }
+        }
+        // Edits land straight in the SwiftData model as they're typed —
+        // SwiftData's own autosave covers the ordinary case, this is the
+        // explicit save for the moment that matters most: leaving the
+        // document. modifiedAt updates here too, on leaving rather than on
+        // every keystroke, so the library's sort order doesn't reshuffle
+        // under someone mid-sentence.
+        .onDisappear {
+            document.touch()
+            try? context.save()
+        }
     }
 }
 

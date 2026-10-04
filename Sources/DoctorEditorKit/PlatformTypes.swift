@@ -87,6 +87,38 @@ public enum Platform {
         #endif
     }()
 
+    /// A platform system-font variant — `default` is San Francisco, `serif` is
+    /// New York. Not a nameable font: `NSFont(name: "New York", size:)` and
+    /// its `UIFont` equivalent both return `nil` on every OS version checked
+    /// (verified against the real SDKs, not assumed) — New York only exists
+    /// through this design-aware path, which resolves it to the private
+    /// `.NewYork-*` family on both platforms identically.
+    public enum FontDesign: String, CaseIterable, Sendable, Codable {
+        case `default`, serif
+
+        var title: String {
+            switch self {
+            case .default: return "Sans Serif"
+            case .serif: return "Serif"
+            }
+        }
+    }
+
+    /// The system font in a given design and weight, falling back to the
+    /// plain system font on the rare device/OS combination that can't
+    /// resolve the descriptor.
+    public static func systemFont(ofSize size: CGFloat, weight: PlatformFont.Weight, design: FontDesign) -> PlatformFont {
+        let base = PlatformFont.systemFont(ofSize: size, weight: weight)
+        guard design != .default else { return base }
+        #if canImport(AppKit)
+        guard let described = base.fontDescriptor.withDesign(.serif) else { return base }
+        return NSFont(descriptor: described, size: size) ?? base
+        #elseif canImport(UIKit)
+        guard let described = base.fontDescriptor.withDesign(.serif) else { return base }
+        return UIFont(descriptor: described, size: size)
+        #endif
+    }
+
     /// The height a line of this font actually needs — ascender to descender,
     /// available under the same names on both `NSFont` and `UIFont`, unlike
     /// `NSFont.boundingRectForFont`, which iOS doesn't have.

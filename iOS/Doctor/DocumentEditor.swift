@@ -44,6 +44,7 @@ struct DocumentEditor: UIViewRepresentable {
         textView.smartQuotesType = .no
         textView.smartDashesType = .no
         textView.smartInsertDeleteType = .no
+        textView.inputAccessoryView = context.coordinator.makeToolbar()
 
         context.coordinator.attach(textView: textView, layoutManager: layoutManager)
         return textView
@@ -70,6 +71,10 @@ struct DocumentEditor: UIViewRepresentable {
         private var highlightWork: DispatchWorkItem?
         /// The line the caret was last on. Concealment only changes when this does.
         private var lastRevealLine: NSRange?
+        /// The hosting controller must outlive `makeToolbar`; without a strong
+        /// reference its view is released and the accessory goes blank — the
+        /// same trap Sprig's own `MarkdownEditor.Coordinator` documents.
+        private var toolbarHost: UIHostingController<MarkdownToolbar>?
 
         init(settings: ReaderSettings, mode: EditorMode) {
             self.settings = settings
@@ -161,6 +166,43 @@ struct DocumentEditor: UIViewRepresentable {
             ]
         }
 
+        // MARK: Formatting toolbar
+
+        /// Nabbed from Sprig (`ios/Sprig/View/MarkdownEditor.swift` in
+        /// `obsidianWeb`) — same `inputAccessoryView` approach, same reason:
+        /// it rides above the keyboard rather than taking up screen space
+        /// the rest of the time, and it's the standard place iOS users expect
+        /// to find per-field tools (autofill, spellcheck suggestions) already.
+        func makeToolbar() -> UIView {
+            let toolbar = MarkdownToolbar { [weak self] command in
+                self?.apply(command)
+            }
+            let host = UIHostingController(rootView: toolbar)
+            host.view.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 46)
+            host.view.autoresizingMask = .flexibleWidth
+            host.view.backgroundColor = .secondarySystemBackground
+            toolbarHost = host
+            return host.view
+        }
+
+        private func apply(_ command: MarkdownCommand) {
+            guard let textView else { return }
+            let storage = textView.textStorage
+            let result = MarkdownEditing.apply(command, to: storage.string, selection: textView.selectedRange)
+
+            isApplyingModel = true
+            storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: result.text)
+            let length = (storage.string as NSString).length
+            textView.selectedRange = NSRange(
+                location: min(result.selection.location, length),
+                length: min(result.selection.length, max(0, length - min(result.selection.location, length)))
+            )
+            isApplyingModel = false
+
+            onTextChange(result.text)
+            highlight(immediately: true)
+        }
+
         // MARK: UITextViewDelegate
 
         func textViewDidChange(_ textView: UITextView) {
@@ -204,5 +246,47 @@ final class LayoutObservingTextView: UITextView {
         guard abs(textContainer.size.width - lastReportedWidth) > 1 else { return }
         lastReportedWidth = textContainer.size.width
         onLayout?()
+    }
+}
+
+/// The accessory strip itself — unchanged from Sprig beyond the command set
+/// (see `MarkdownEditing.swift`'s header for what differs and why).
+private struct MarkdownToolbar: View {
+    let perform: (MarkdownCommand) -> Void
+
+    private var inline: [MarkdownCommand] { MarkdownCommand.allCases.filter(\.isInline) }
+    private var sections: [MarkdownCommand] { MarkdownCommand.allCases.filter { !$0.isInline } }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(inline) { button($0) }
+
+                Divider().frame(height: 22).padding(.horizontal, 6)
+
+                ForEach(sections) { button($0) }
+            }
+            .padding(.horizontal, 10)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func button(_ command: MarkdownCommand) -> some View {
+        Button {
+            perform(command)
+        } label: {
+            Group {
+                if let text = command.textLabel {
+                    Text(text).font(.system(size: 15, weight: .semibold))
+                } else {
+                    Image(systemName: command.symbol)
+                        .font(.system(size: 16, weight: .medium))
+                }
+            }
+            .frame(width: 38, height: 34)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color(uiColor: MarkdownTheme.accent))
+        .accessibilityLabel(command.label)
     }
 }

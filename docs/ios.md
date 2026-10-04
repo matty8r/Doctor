@@ -61,10 +61,10 @@ the existing macOS `Doctor` target and, eventually, the iOS app):
   `MarkdownThemeSettings` (font/size/spacing/hideSyntax), that `AppSettings`
   conforms to and that iOS's reader settings — whatever shape those take —
   will conform to separately, without either side depending on the other.
-- **`MarkdownEditing` (the Format-menu commands) still hasn't moved** — see
-  "Editing in place" below for what *did*: the live-preview-is-editable
-  mechanic itself, which is a different, smaller piece of Mac's editor
-  (`MarkdownEditor`'s Coordinator, not `MarkdownEditing.swift`).
+- **Mac's own `MarkdownEditing.swift` still hasn't moved** — iOS's formatting
+  toolbar (see "A formatting toolbar" below) is a *different* command layer,
+  ported from Sprig rather than from Mac. The two aren't unified; see that
+  section for why the command sets themselves also differ from each other.
 - **Verification, not assumption:** `xcrun --sdk iphonesimulator swiftc
   -typecheck` against the arm64-ios17.0-simulator target is what actually
   caught all of the above — not reading the two SDKs' headers side by side.
@@ -86,7 +86,7 @@ predicted — see "What actually moved" above for exactly what each one took.
 | `DoctorMarkdown` — scanner, HTML renderer, print CSS | ~1,770 | **Done — free.** Compiles for iOS unchanged; verified by SDK type-check. |
 | `MarkdownTheme`, `MarkdownHighlighter`, `TableLayout` | ~880 | **Done — shimmed.** Now living in `DoctorEditorKit`. Five real API differences, all isolated in `PlatformTypes.swift`. |
 | `ConcealingLayoutManager` | ~240 | **Done — ported.** `NSLayoutManager.setGlyphs`/`drawBackground(forGlyphRange:at:)` do have identical signatures on iOS, confirmed by the SDK type-check, not just by reading docs. |
-| `MarkdownEditing` (the Format-menu commands — bold/italic shortcuts, list continuation, heading levels) | ~300 | **Still not moving.** `DocumentEditor` ported the *live-preview-is-editable* mechanic (concealment follows the caret, typing re-highlights) from `MarkdownEditor`'s Coordinator — that's a different ~150 lines, not this file. No formatting toolbar exists yet. |
+| `MarkdownEditing` (Mac's own Format-menu commands) | ~300 | **Still not moving, and won't feed the iOS toolbar.** iOS's formatting commands came from Sprig instead — see "A formatting toolbar." `DocumentEditor` separately ported the *live-preview-is-editable* mechanic (concealment follows the caret) from `MarkdownEditor`'s Coordinator, a different ~150 lines of this same mac file. |
 | `EditorTextView`, `MarkdownEditor` | ~690 (mac equivalent) | **Done — ported, not a straight line-for-line port.** `DocumentEditor.swift`'s Coordinator mirrors `MarkdownEditor.Coordinator` directly: `loadIfNeeded`/`highlight(immediately:)`/`textViewDidChange`/`textViewDidChangeSelection` are the same shape, same debounce window, same "which line is the caret on" logic. What didn't carry over: undo-manager-per-tab (one document per screen, `UITextView`'s own undo manager is enough), `clickedOnLink`, Obsidian's document-directory plumbing. |
 | `DocumentStore`, `AppDelegate`, `DoctorCommands`, tab UI | ~790 | **Dropped**, replaced by the CloudKit-backed library (list view + a SwiftData `Document` model) — genuinely new, no mac equivalent to point at. |
 | `ExportService` | ~180 | **Not v1.** No print/PDF export yet. |
@@ -200,12 +200,33 @@ not replacing — the SwiftPM `Makefile` + `build-app.sh` macOS build. The iOS
 project depends on `DoctorMarkdown` and `DoctorEditorKit` as local Swift
 package dependencies.
 
-**A formatting toolbar is still not attempted.** The live-preview-is-editable
-mechanic is built (see above) — what's still missing is `MarkdownEditing`'s
-actual commands: bold/italic shortcuts, heading levels, list continuation on
-Return, Tab to indent. None of that has an iOS UI yet (there's no keyboard
-shortcut story on a phone the way there is on a Mac menu bar; this needs its
-own design, likely a keyboard accessory view, not a straight port).
+**A formatting toolbar — built (2026-10-04), nabbed from Sprig.** Sprig
+(`ios/Sprig/` in `obsidianWeb`) already has exactly this: a Markdown
+`inputAccessoryView` riding above the keyboard, and a pure-function command
+layer (`MarkdownEditing.apply(_:to:selection:) -> (text, selection)`,
+Foundation only) behind it. Both moved over close to verbatim —
+`iOS/Doctor/MarkdownEditing.swift` (the pure logic) and the toolbar/
+`UIHostingController` wiring now inside `DocumentEditor.swift`'s Coordinator.
+
+What's genuinely different from Sprig, not copy-paste:
+- **The command set matches what `DoctorMarkdown` renders**, not Sprig's own
+  set. `.highlight` (`==text==`) and `.task` (`- [ ] `) are new — Doctor's
+  renderer understands both, drawn from the same list the Mac app's
+  `CheatSheetView` uses. Sprig's `.callout` (`> [!note]`, an Obsidian
+  convention its own publish pipeline reads) is gone — Doctor's renderer has
+  no special handling for it, so including the button would format text the
+  app itself can't display correctly.
+- **The Coordinator applies commands through the existing highlight pipeline**,
+  not a bespoke update path: `apply(_ command:)` replaces the storage,
+  updates the selection, pushes the new text out through the same
+  `onTextChange` that ordinary typing uses, and calls `highlight(immediately:
+  true)` — so a toolbar edit re-conceals/re-reveals exactly like a keystroke
+  would, and tables/headings/etc. redraw correctly in the same pass.
+
+Verified live in Simulator: selected a word, tapped Italic, watched it wrap
+to `*word*` with the markers revealed (caret on that line) and the selection
+preserved around the word — the trickiest path (toggle-wrap on a real
+selection) working end to end, not just compiling.
 
 **Portal work, not code** — needed before this leaves Simulator: the
 existing `com.matty8r.Doctor` App ID needs iCloud and Push Notifications

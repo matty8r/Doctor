@@ -325,6 +325,32 @@ won't repeat the same way twice:
   .plist properties, since Doctor uses only standard Apple networking
   (CloudKit) and genuinely qualifies for the exemption.
 
+**xcodegen gotcha, found shipping the toolbar fix (2026-10-04): it
+overwrites `CFBundleVersion`/`CFBundleShortVersionString` with its own
+literal defaults on every single `generate`, not just the first.** Bumping
+`CURRENT_PROJECT_VERSION` in `project.yml` updates the `.pbxproj` build
+setting correctly, but `iOS/Doctor/Info.plist` is a real file xcodegen
+writes, not a template Xcode fills in at build time — and xcodegen
+resolves those two keys to literal text at *generate* time, unconditionally,
+on every run, not only when the file doesn't exist yet. Hand-editing the
+file to the usual `$(MARKETING_VERSION)`/`$(CURRENT_PROJECT_VERSION)`
+placeholders doesn't survive the next `generate` either — same
+clobbering. The archived app kept `CFBundleVersion: "1"` through two full
+archive-and-check cycles, including one with the project's own DerivedData
+wiped, before this was what it actually was. Confirmed precisely rather
+than guessed, each time, by reading `CFBundleVersion` straight off the
+*archived* `Info.plist` (`/usr/libexec/PlistBuddy -c "Print
+:CFBundleVersion"`) — and the real consequence, not just a confusing
+number: `xcrun altool --upload-app` rejected the upload outright for
+repeating a build number already used. Fixed by setting
+`info.properties.CFBundleShortVersionString`/`CFBundleVersion` to those
+same placeholder strings explicitly *inside `project.yml`* — explicit
+properties take precedence over whatever default xcodegen would otherwise
+apply, confirmed by regenerating and reading the written file before
+trusting it. A version bump going forward is purely
+`CURRENT_PROJECT_VERSION` in `project.yml`, same as it always should have
+been.
+
 **Import path.** A share extension ("Open in Doctor") is still the cleanest
 way something else hands Doctor a file, and is still not built. Not blocking
 anything — the document screen's own in-place editing covers "how does

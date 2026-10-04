@@ -264,6 +264,34 @@ public final class ConcealingLayoutManager: NSLayoutManager {
         return (left, lineRect)
     }
 
+    /// The task whose drawn checkbox contains `point` (text-container
+    /// coordinates, i.e. a tap location with `textContainerInset` already
+    /// subtracted out), if any. Lets a tap toggle the checkbox in place
+    /// instead of the normal, here-wrong thing a tap on a text view does —
+    /// just place the caret, which on a concealed task line also reveals its
+    /// raw `- [ ] ` and leaves edit mode behind. Reuses the exact geometry
+    /// `drawBackground` draws the checkbox with, so a hit always matches
+    /// what's actually on screen.
+    public func checkboxHit(at point: CGPoint, in container: NSTextContainer, origin: CGPoint = .zero) -> NSRange? {
+        for decoration in decorations {
+            guard case .checkbox(_, let indentWidth, let boxSize) = decoration.style,
+                  decoration.range.length > 0
+            else { continue }
+            let glyphRange = self.glyphRange(forCharacterRange: decoration.range, actualCharacterRange: nil)
+            guard let gap = reservedGap(forGlyphRange: glyphRange, origin: origin,
+                                        container: container, indentWidth: indentWidth)
+            else { continue }
+            let box = CGRect(
+                x: gap.left + (indentWidth - boxSize) / 2,
+                y: gap.line.minY + (gap.line.height - boxSize) / 2,
+                width: boxSize,
+                height: boxSize
+            ).insetBy(dx: -8, dy: -8)
+            if box.contains(point) { return decoration.range }
+        }
+        return nil
+    }
+
     private func fullWidth(_ rect: CGRect, container: NSTextContainer, origin: CGPoint) -> CGRect {
         let padding = container.lineFragmentPadding
         return CGRect(

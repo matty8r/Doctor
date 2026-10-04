@@ -46,6 +46,23 @@ struct DocumentEditor: UIViewRepresentable {
         textView.smartInsertDeleteType = .no
         textView.inputAccessoryView = context.coordinator.makeToolbar()
 
+        // A plain tap on a UITextView just places the caret there -- on a
+        // concealed task line that also reveals its raw "- [ ] " and drops
+        // into edit mode, which is exactly wrong for tapping the checkbox
+        // itself. This recognizer claims the touch first (every one of the
+        // text view's own recognizers is made to wait for it to fail) but
+        // only actually recognizes taps that land on a drawn checkbox --
+        // `shouldReceive` gates that -- so it's invisible to every other
+        // tap, which falls through to UITextView's normal handling untouched.
+        let checkboxTap = UITapGestureRecognizer(
+            target: context.coordinator, action: #selector(Coordinator.handleCheckboxTap(_:))
+        )
+        checkboxTap.delegate = context.coordinator
+        textView.addGestureRecognizer(checkboxTap)
+        for recognizer in textView.gestureRecognizers ?? [] where recognizer !== checkboxTap {
+            recognizer.require(toFail: checkboxTap)
+        }
+
         context.coordinator.attach(textView: textView, layoutManager: layoutManager)
         return textView
     }
@@ -59,7 +76,7 @@ struct DocumentEditor: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var settings: ReaderSettings
         var onTextChange: (String) -> Void = { _ in }
         private var mode: EditorMode
@@ -201,6 +218,48 @@ struct DocumentEditor: UIViewRepresentable {
 
             onTextChange(result.text)
             highlight(immediately: true)
+        }
+
+        // MARK: Checkbox tap
+
+        /// Gates `checkboxTap` to touches that actually land on a drawn
+        /// checkbox, so every other tap -- which this recognizer would
+        /// otherwise also claim first, per its `require(toFail:)` setup in
+        /// `makeUIView` -- fails immediately and falls straight through to
+        /// `UITextView`'s own handling, unchanged.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            checkboxHit(at: touch.location(in: textView)) != nil
+        }
+
+        @objc func handleCheckboxTap(_ gesture: UITapGestureRecognizer) {
+            guard let textView,
+                  let hit = checkboxHit(at: gesture.location(in: textView)),
+                  let newText = ChecklistToggle.apply(text: textView.textStorage.string, location: hit.location)
+            else { return }
+
+            // Same length either way ("[ ]"/"[x]" are both 3 characters), so
+            // the existing selection stays numerically valid as-is -- the
+            // whole point: toggle the box without moving the caret there or
+            // revealing that line's raw Markdown, which a caret move would.
+            let selection = textView.selectedRange
+            isApplyingModel = true
+            textView.textStorage.replaceCharacters(
+                in: NSRange(location: 0, length: textView.textStorage.length), with: newText
+            )
+            textView.selectedRange = selection
+            isApplyingModel = false
+
+            onTextChange(newText)
+            highlight(immediately: true)
+        }
+
+        private func checkboxHit(at point: CGPoint) -> NSRange? {
+            guard let textView, let layoutManager else { return nil }
+            let adjusted = CGPoint(
+                x: point.x - textView.textContainerInset.left,
+                y: point.y - textView.textContainerInset.top
+            )
+            return layoutManager.checkboxHit(at: adjusted, in: textView.textContainer)
         }
 
         // MARK: UITextViewDelegate

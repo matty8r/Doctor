@@ -263,6 +263,48 @@ on-screen pass once Simulator's GUI is reachable again — this verification
 is strong for "does the right text get produced," not a substitute for
 seeing it typed.
 
+**Checklists rendered as real checkboxes, and Return continues a list —
+built (2026-10-04).** Follow-up to the same user feedback that produced the
+blank-line fix above: `- [ ] text` was rendering literally — the bracket
+syntax itself, not a checkbox — and pressing Return inside any list item
+inserted a plain newline, dropping back to an unmarked paragraph instead of
+continuing the list.
+
+The checkbox is a `DoctorEditorKit` change, not an iOS-only one — same
+engine, same fix on both platforms. `.task` lines used to be excluded from
+concealment entirely (`concealableLineMarker`) on the reasoning that hiding
+`- [ ] ` would leave nothing to read as a list; now they conceal like any
+other marker, and `ConcealingLayoutManager` draws a real checkbox
+(`BlockDecoration.Style.checkbox`) in the reserved gap instead — unchecked
+as a stroked rounded square, checked as an accent-filled square with a
+checkmark, pure `CGContext` drawing so there's no `NSBezierPath`/
+`UIBezierPath` spelling difference to branch on. One real bug on the way:
+the decoration's line-fragment lookup anchored on the box's own (concealed,
+null-glyph) range, which `NSLayoutManager` resolved to the *previous*
+line — every checkbox drew one row above its actual text. Fixed by anchoring
+on the task's visible content range instead, which always has a real glyph.
+Caught and fixed via the offscreen rendering harness (`NSHostingView` +
+`bitmapImageRepForCachingDisplay`, the same one used earlier for the UI
+redesign), not guessed at — rendered before/after PNGs of a real checklist
+document showing the misplacement and then the fix.
+
+List continuation is iOS-only (`iOS/Doctor/ListContinuation.swift`), the
+same pure `(text, selection) → Result` shape as `MarkdownEditing.apply`,
+wired in through `UITextViewDelegate.textView(_:shouldChangeTextIn:
+replacementText:)`: `nil` when the caret's line isn't a list/quote (falls
+through to an ordinary newline), otherwise the next marker — incremented
+number for ordered, always-unchecked for task regardless of what it follows,
+indent preserved for nested items — or, when the item is empty, the marker
+is stripped and the list is exited instead of continued, matching every
+other list-aware editor's convention. Verified with the same pure-function
+probe method the blank-line bug used (12 cases: continuation, increment,
+digit-count change, forced-unchecked task, quote, three empty-item-exits,
+mid-item split, indent preservation, two non-list fallthroughs — all pass),
+plus end-to-end on a real booted simulator this time (see Import path,
+below, for how): `xcrun simctl openurl` handed the app a real file and the
+screenshot showed a correctly-positioned unchecked checkbox next to real
+imported text, not just the harness's synthetic markdown.
+
 **Portal work — done (2026-10-04), and shipped to TestFlight.** `iOS/
 release.sh` now archives, signs, exports and uploads in one run. What that
 took, worth keeping as a record since most of it was first-time setup that
@@ -351,7 +393,22 @@ trusting it. A version bump going forward is purely
 `CURRENT_PROJECT_VERSION` in `project.yml`, same as it always should have
 been.
 
-**Import path.** A share extension ("Open in Doctor") is still the cleanest
-way something else hands Doctor a file, and is still not built. Not blocking
-anything — the document screen's own in-place editing covers "how does
-content get in" well enough to keep testing with.
+**Import path — built, the "Open With" half of it.** Doctor wasn't appearing
+in Files' "Open With" menu because nothing had ever declared it could open
+anything: no `CFBundleDocumentTypes`, no `UTImportedTypeDeclarations`, no
+code to receive a file even if it had. Fixed by mirroring the Mac app's own
+`Resources/Info.plist` into `iOS/project.yml`'s `info.properties` —
+`net.daringfireball.markdown` (Owner rank) plus plain text (Alternate rank),
+same extensions and MIME types — and adding `.onOpenURL` on `ContentView`'s
+`NavigationStack`. `LSSupportsOpeningDocumentsInPlace` is explicitly `false`:
+Doctor copies a file's content into a new library document and navigates
+straight into it, the same as writing a new one, rather than keeping a live
+link back to the original (it's an importer, like Notes, not an in-place
+editor like the Mac app — see "Sync" above). Verified for real, not just
+compiled: `xcrun simctl openurl <device> "file://…/test.md"` on a booted
+simulator routed straight through the declared document type into
+`.onOpenURL`, imported the file, and navigated into it.
+
+A share extension ("Open in Doctor" from another app's share sheet) is still
+a separate, un-built path — "Open With" covers Files; a share sheet covers
+everything else that offers to share plain text. Not blocking anything.

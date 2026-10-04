@@ -205,6 +205,30 @@ struct DocumentEditor: UIViewRepresentable {
 
         // MARK: UITextViewDelegate
 
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            let result: MarkdownEditing.Result?
+            switch text {
+            case "\n": result = ListContinuation.apply(text: textView.textStorage.string, selection: range)
+            case " ": result = ListIndent.apply(text: textView.textStorage.string, selection: range)
+            default: result = nil
+            }
+            guard let result else { return true }
+
+            let storage = textView.textStorage
+            isApplyingModel = true
+            storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: result.text)
+            let length = (storage.string as NSString).length
+            textView.selectedRange = NSRange(
+                location: min(result.selection.location, length),
+                length: min(result.selection.length, max(0, length - min(result.selection.location, length)))
+            )
+            isApplyingModel = false
+
+            onTextChange(result.text)
+            highlight(immediately: true)
+            return false
+        }
+
         func textViewDidChange(_ textView: UITextView) {
             guard !isApplyingModel else { return }
             onTextChange(textView.textStorage.string)

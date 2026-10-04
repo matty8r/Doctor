@@ -58,7 +58,25 @@ struct ContentView: View {
                 ReaderSettingsView(preferences: preferences)
             }
             .onAppear { Persistence.seedIfEmpty(context) }
+            .onOpenURL { importDocument(from: $0) }
         }
+    }
+
+    /// Doctor is an importer, not a file-based editor like the Mac app: Open
+    /// With hands over a URL to read once, not a file to keep a live link to
+    /// (see docs/ios.md's "Sync" decision — like Notes, not like Preview).
+    /// This copies that file's content into a new library document and
+    /// navigates straight into it, the same as writing a new one.
+    private func importDocument(from url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        let title = url.deletingPathExtension().lastPathComponent
+        let body = (try? String(contentsOf: url, encoding: .utf8))
+            ?? "Couldn't read \"\(url.lastPathComponent)\" as text."
+        let document = Document(title: title, body: body)
+        context.insert(document)
+        path.append(document)
     }
 
     private func row(for document: Document) -> some View {

@@ -16,6 +16,15 @@ public struct BlockDecoration {
         case table
         /// A table drawn as a grid, in the line the first row reserves for it.
         case grid(TableGrid)
+        /// A task item's `- [ ]`/`- [x]`, concealed and drawn as a real
+        /// checkbox instead. `indentWidth` is the gap reserved for it
+        /// (the same width the list-nesting math already leaves between a
+        /// line's bullet column and its text column); `boxSize` is how big
+        /// to draw the square within that gap.
+        case checkbox(checked: Bool, indentWidth: CGFloat, boxSize: CGFloat)
+        /// A bullet's own "- ", concealed and drawn as a dot instead, the
+        /// same reasoning as `.checkbox`.
+        case bullet(indentWidth: CGFloat, dotSize: CGFloat)
     }
     public var range: NSRange
     public var style: Style
@@ -156,6 +165,27 @@ public enum MarkdownHighlighter {
             }
         }
 
+        /// A concealed list marker's own leading indent whitespace is real,
+        /// non-concealed glyphs -- the scanner's marker range starts after it,
+        /// not before -- so left alone it pushes a nested item's first line
+        /// further right than its own word-wrapped continuation, which is
+        /// positioned by paragraph indent alone and carries no such
+        /// whitespace of its own. Concealing it too, and pulling the first
+        /// line over to the wrapped indent the same way `.task` already did,
+        /// keeps both exactly aligned regardless of nesting depth (seen
+        /// directly: a nested item's wrap landed a full indent step short of
+        /// its own first line until this changed; an unindented, top-level
+        /// one was never affected, having no such whitespace to begin with).
+        func alignNestedFirstLine(lineRange: NSRange, markerStart: Int, paragraph: NSParagraphStyle) {
+            if markerStart > lineRange.location {
+                concealed.append(NSRange(location: lineRange.location, length: markerStart - lineRange.location))
+            }
+            let aligned = NSMutableParagraphStyle()
+            aligned.setParagraphStyle(paragraph)
+            aligned.firstLineHeadIndent = paragraph.headIndent
+            storage.addAttribute(.paragraphStyle, value: aligned, range: lineRange)
+        }
+
         for (tokenIndex, token) in tokens.enumerated() {
             let lineRange = token.range
             let table = tableOfToken[tokenIndex]
@@ -271,7 +301,16 @@ public enum MarkdownHighlighter {
                     storage.addAttribute(.foregroundColor, value: MarkdownTheme.marker, range: lineRange)
                 }
 
-            case .bullet, .ordered:
+            case .bullet:
+                if conceal, !isRevealed, let marker = token.markers.first {
+                    alignNestedFirstLine(lineRange: lineRange, markerStart: marker.location, paragraph: paragraph)
+                    decorations.append(BlockDecoration(
+                        range: token.content.length > 0 ? token.content : marker,
+                        style: .bullet(indentWidth: theme.listIndentWidth, dotSize: theme.baseSize * 0.22)
+                    ))
+                }
+
+            case .ordered:
                 break
 
             case .task(let checked):
@@ -280,7 +319,23 @@ public enum MarkdownHighlighter {
                                          value: NSUnderlineStyle.single.rawValue, range: token.content)
                     storage.addAttribute(.foregroundColor, value: MarkdownTheme.secondary, range: token.content)
                 }
-                if let box = token.markers.last {
+                if conceal, !isRevealed, token.markers.count >= 2 {
+                    alignNestedFirstLine(lineRange: lineRange, markerStart: token.markers[0].location, paragraph: paragraph)
+                    // Anchored on the content, not the box: the box's own
+                    // glyphs are concealed (null), and a glyph range that's
+                    // entirely null has no real glyph of its own to find a
+                    // line fragment from, so NSLayoutManager resolves it to
+                    // the nearest preceding *visible* glyph instead -- the
+                    // end of the line above (seen directly: every checkbox
+                    // drew one row above its own text until this changed).
+                    // The content range always has a real glyph to anchor on.
+                    decorations.append(BlockDecoration(
+                        range: token.content.length > 0 ? token.content : token.markers[1],
+                        style: .checkbox(checked: checked,
+                                         indentWidth: theme.listIndentWidth,
+                                         boxSize: theme.baseSize * 0.78)
+                    ))
+                } else if let box = token.markers.last {
                     storage.addAttribute(.foregroundColor, value: MarkdownTheme.accent, range: box)
                 }
 
@@ -358,11 +413,14 @@ public enum MarkdownHighlighter {
         }
     }
 
-    /// Which line-level punctuation disappears in preview. List bullets and task
-    /// boxes stay: hiding them would leave the list with nothing to read as a list.
+    /// Which line-level punctuation disappears in preview. Ordered numbers
+    /// stay: hiding "1. " would leave the list with nothing to read as
+    /// ordered, and the number itself is meaningful content, not pure
+    /// syntax. Bullets and task boxes both conceal — a drawn dot or
+    /// checkbox decoration takes their place instead.
     private static func concealableLineMarker(_ kind: LineKind) -> Bool {
         switch kind {
-        case .bullet, .ordered, .task:
+        case .ordered:
             return false
         default:
             return true

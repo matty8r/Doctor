@@ -214,10 +214,54 @@ public final class ConcealingLayoutManager: NSLayoutManager {
                 let line = CGRect(x: wide.minX, y: wide.midY - 0.5, width: wide.width, height: 1)
                 MarkdownTheme.separator.setFill()
                 PlatformBezierPath(rect: line).fill()
+
+            case .checkbox(let checked, let indentWidth, let boxSize):
+                guard let gap = reservedGap(forGlyphRange: glyphRange, origin: origin,
+                                            container: container, indentWidth: indentWidth) else { continue }
+                let box = CGRect(
+                    x: gap.left + (indentWidth - boxSize) / 2,
+                    y: gap.line.minY + (gap.line.height - boxSize) / 2,
+                    width: boxSize,
+                    height: boxSize
+                )
+                drawCheckbox(box, checked: checked)
+
+            case .bullet(let indentWidth, let dotSize):
+                guard let gap = reservedGap(forGlyphRange: glyphRange, origin: origin,
+                                            container: container, indentWidth: indentWidth) else { continue }
+                let dot = CGRect(
+                    x: gap.left + (indentWidth - dotSize) / 2,
+                    y: gap.line.minY + (gap.line.height - dotSize) / 2,
+                    width: dotSize,
+                    height: dotSize
+                )
+                MarkdownTheme.text.setFill()
+                PlatformBezierPath(ovalIn: dot).fill()
             }
         }
 
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
+    }
+
+    /// Where a list marker's reserved gap sits for a decoration anchored on
+    /// `glyphRange` -- the item's visible content, not its concealed marker
+    /// (a glyph range that's entirely null/concealed has no real glyph of
+    /// its own to find a line fragment from, so `.checkbox` and `.bullet`
+    /// both anchor on the content instead). `left` is the gap's left edge;
+    /// combine with the decoration's own `indentWidth` to center a glyph in
+    /// it, the same way for either style.
+    private func reservedGap(
+        forGlyphRange glyphRange: NSRange, origin: CGPoint, container: NSTextContainer, indentWidth: CGFloat
+    ) -> (left: CGFloat, line: CGRect)? {
+        guard glyphRange.length > 0 else { return nil }
+        var lineRect = lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+        lineRect.origin.x += origin.x
+        lineRect.origin.y += origin.y
+        let charIndex = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil).location
+        let headIndent = (textStorage?.attribute(.paragraphStyle, at: charIndex, effectiveRange: nil)
+            as? NSParagraphStyle)?.headIndent ?? indentWidth
+        let left = origin.x + container.lineFragmentPadding + headIndent - indentWidth
+        return (left, lineRect)
     }
 
     private func fullWidth(_ rect: CGRect, container: NSTextContainer, origin: CGPoint) -> CGRect {
@@ -240,6 +284,39 @@ public final class ConcealingLayoutManager: NSLayoutManager {
         ])
         let size = label.size()
         label.draw(at: CGPoint(x: panel.maxX - size.width - 8, y: panel.minY + 4))
+    }
+
+    /// Pure CoreGraphics rather than `PlatformBezierPath`, since a checkmark
+    /// needs individual line segments and `NSBezierPath`/`UIBezierPath` spell
+    /// "add a segment" differently (`line(to:)` vs `addLine(to:)`); `CGContext`
+    /// itself doesn't.
+    private func drawCheckbox(_ rect: CGRect, checked: Bool) {
+        guard let context = Platform.currentCGContext else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+
+        let corner = rect.width * 0.22
+        let path = CGPath(roundedRect: rect, cornerWidth: corner, cornerHeight: corner, transform: nil)
+
+        if checked {
+            context.addPath(path)
+            context.setFillColor(MarkdownTheme.accent.cgColor)
+            context.fillPath()
+
+            context.setStrokeColor(PlatformColor.white.cgColor)
+            context.setLineWidth(max(1.2, rect.width * 0.12))
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            context.move(to: CGPoint(x: rect.minX + rect.width * 0.26, y: rect.minY + rect.height * 0.52))
+            context.addLine(to: CGPoint(x: rect.minX + rect.width * 0.43, y: rect.minY + rect.height * 0.70))
+            context.addLine(to: CGPoint(x: rect.minX + rect.width * 0.76, y: rect.minY + rect.height * 0.32))
+            context.strokePath()
+        } else {
+            context.addPath(path)
+            context.setStrokeColor(MarkdownTheme.marker.cgColor)
+            context.setLineWidth(max(1.0, rect.width * 0.09))
+            context.strokePath()
+        }
     }
 
     private func drawPanel(in rect: CGRect, fill: PlatformColor, stroke: PlatformColor, radius: CGFloat) {

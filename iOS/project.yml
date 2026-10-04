@@ -36,7 +36,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: Doctor
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "4"
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
@@ -68,6 +68,44 @@ targets:
         # rejected for repeating a build number already used).
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Document-type association, mirroring the Mac app's Info.plist
+        # (Resources/Info.plist) so Doctor appears in Files' "Open With"
+        # menu for Markdown/text files. Doctor imports rather than edits
+        # in place -- opening a file copies its contents into a new
+        # library document rather than keeping a live link to the
+        # original -- so LSSupportsOpeningDocumentsInPlace is explicitly
+        # false, not just left to default.
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown Document
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+          - CFBundleTypeName: Plain Text Document
+            LSItemContentTypes:
+              - public.plain-text
+              - public.text
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeDescription: Markdown Document
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - md
+                - markdown
+                - mdown
+                - mkd
+                - mkdn
+                - mdtext
+                - mdtxt
+                - text
+              public.mime-type:
+                - text/markdown
+                - text/x-markdown
 schemes:
   Doctor:
     build:

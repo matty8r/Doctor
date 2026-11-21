@@ -33,6 +33,16 @@ cd "$(dirname "$0")"
 API_KEY_ID="44BG9AWQNS"
 API_ISSUER_ID="69a6de7c-549d-47e3-e053-5b8c7c11a4d1"
 
+# --dry-run: archive and export, print the exported app's entitlements, and
+# stop before anything is uploaded.
+DRY_RUN=0
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        *) echo "Unknown option: $arg" >&2; exit 1 ;;
+    esac
+done
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -75,6 +85,19 @@ xcodebuild -exportArchive \
     -archivePath "${WORK}/Doctor.xcarchive" \
     -exportPath "${WORK}/export" \
     -exportOptionsPlist "${WORK}/ExportOptions.plist"
+
+echo "== Entitlements of the exported app =="
+unzip -q -o "${WORK}/export/Doctor.ipa" -d "${WORK}/ipa"
+codesign -d --entitlements - --xml "${WORK}/ipa/Payload/Doctor.app" 2>/dev/null \
+    | plutil -convert xml1 -o - - | grep -A1 -E "aps-environment|icloud-container-environment|icloud-container-identifiers|get-task-allow" \
+    | grep -E "<string>|<true|<false" | sed 's/^[[:space:]]*//'
+BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${WORK}/ipa/Payload/Doctor.app/Info.plist")"
+echo "Build number in the archive: ${BUILD_NUMBER}"
+
+if [ "$DRY_RUN" = 1 ]; then
+    echo "Dry run: stopping before the upload."
+    exit 0
+fi
 
 echo "== Uploading to App Store Connect =="
 xcrun altool --upload-app -f "${WORK}/export/Doctor.ipa" -t ios \

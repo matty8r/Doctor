@@ -146,6 +146,12 @@ echo "    iCloud container .. ${CONTAINER}"
 [ "${PROFILE_HAS_ENV_KEY}" = "yes" ] \
     || echo "    note: the profile doesn't list icloud-container-environment; the signed app is checked below."
 
+# Never overwrite a DMG that was already released: the version in Info.plist
+# names the file, so an unbumped version would silently replace what shipped.
+PLANNED_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ROOT/Resources/Info.plist")"
+[ ! -e "$ROOT/Doctor-${PLANNED_VERSION}.dmg" ] \
+    || die "Doctor-${PLANNED_VERSION}.dmg already exists. Bump CFBundleShortVersionString and CFBundleVersion in Resources/Info.plist first."
+
 # ------------------------------------------------------------------ build
 
 CONFIG=release SIGN_IDENTITY="$IDENTITY" PROVISIONING_PROFILE="${PROFILE_PATH}" ENTITLEMENTS="${ENTITLEMENTS}" \

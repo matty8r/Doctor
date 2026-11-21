@@ -63,6 +63,8 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
+                    // One "+", as the empty state says ("Tap + to write one"),
+                    // with both things you can add inside it.
                     Menu {
                         Button(action: { newDocument(in: nil) }) {
                             Label("New Document", systemImage: "doc.badge.plus")
@@ -71,7 +73,7 @@ struct ContentView: View {
                             Label("New Folder", systemImage: "folder.badge.plus")
                         }
                     } label: {
-                        Label("New", systemImage: "square.and.pencil")
+                        Label("New", systemImage: "plus")
                     }
                 }
             }

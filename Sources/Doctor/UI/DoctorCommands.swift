@@ -15,8 +15,11 @@ struct DoctorCommands: Commands {
             Button("New") { store.newDocument() }
                 .keyboardShortcut("n", modifiers: .command)
 
-            Button("New Library Document") { store.newLibraryDocument(in: nil) }
+            Button("New Library Document") { LibraryWindowController.shared.newDocument() }
                 .keyboardShortcut("n", modifiers: [.command, .option])
+
+            Button("New Library Folder") { LibraryWindowController.shared.newFolder() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("Open…") { store.showOpenPanel() }
                 .keyboardShortcut("o", modifiers: .command)

@@ -34,6 +34,14 @@ enum LibraryItemID: Hashable {
 final class LibraryUIState: ObservableObject {
     @Published var selection: Set<LibraryItemID> = []
     @Published var reveal: UUID?
+    /// A request from the menu bar or the window's toolbar; the tree acts on it
+    /// (it owns the selection and the rename prompt) and clears it.
+    @Published var command: LibraryCommand?
+}
+
+enum LibraryCommand: Equatable {
+    case newDocument
+    case newFolder
 }
 
 /// Which folders are expanded. A per-device view preference, deliberately kept
@@ -126,6 +134,14 @@ struct LibraryView: View {
             footer
         }
         .frame(minWidth: 240, minHeight: 320)
+        .onChange(of: ui.command) { _, command in
+            guard let command else { return }
+            ui.command = nil
+            switch command {
+            case .newDocument: newDocument(in: selectedFolder)
+            case .newFolder: newFolder(in: selectedFolder)
+            }
+        }
         .onChange(of: ui.reveal) { _, id in
             guard let id else { return }
             reveal(id)

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Release entitlements for the Developer ID build — used only when
+  Scripts/release.sh signs against a Developer ID provisioning profile. A plain
+  `make` build is ad-hoc signed WITHOUT these, because iCloud entitlements are
+  restricted: an ad-hoc binary that claims them is killed at launch. Without
+  them the app simply falls back to a local-only library (see LibraryStore).
+
+  Doctor is deliberately not sandboxed — it opens any Markdown file and files
+  notes into an Obsidian vault — so there is no app-sandbox key here.
+
+  Why the identifiers are spelled out: Xcode's archive-and-export synthesizes
+  the application and team identifiers and the container environment itself.
+  Doctor is built by SwiftPM and signed with plain codesign, so none of that
+  happens for free. Each key must also be allowed by the embedded profile, and
+  Scripts/release.sh checks that before it signs.
+
+  The push key is the macOS spelling (com.apple.developer.aps-environment); the
+  iOS app's plain `aps-environment` is not read on macOS.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.application-identifier</key>
+	<string>CG3Q63736Q.com.matty8r.Doctor</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>CG3Q63736Q</string>
+	<key>com.apple.developer.aps-environment</key>
+	<string>production</string>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.matty8r.Doctor</string>
+	</array>
+	<key>com.apple.developer.icloud-container-environment</key>
+	<string>Production</string>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+</dict>
+</plist>

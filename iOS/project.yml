@@ -27,6 +27,8 @@ targets:
         product: DoctorMarkdown
       - package: Doctor
         product: DoctorEditorKit
+      - package: Doctor
+        product: DoctorLibrary
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matty8r.Doctor

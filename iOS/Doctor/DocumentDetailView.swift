@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import DoctorLibrary
 import DoctorEditorKit
 
 /// One document — title and body both editable in place, no separate

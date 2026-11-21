@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import DoctorLibrary
 
 @main
 struct DoctorApp: App {

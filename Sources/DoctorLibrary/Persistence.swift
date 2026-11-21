@@ -1,26 +1,28 @@
 import Foundation
 import SwiftData
 
-/// Sets up the one CloudKit-backed store the library lives in. Modeled on
+/// Sets up the one CloudKit-backed store the library lives in, shared by the
+/// iOS and macOS apps.
+/// Modeled on
 /// Feed Me, Seymour!'s `Persistence.swift` — same fallback ladder, same
 /// reason for it — but a single configuration: Doctor has no local-only
 /// split, because there's no part of a `Document` that isn't worth syncing
 /// (unlike an article body that's re-fetchable from its feed, a note has no
 /// other copy anywhere).
-enum Persistence {
+public enum Persistence {
 
-    static let schema = Schema([Document.self])
+    public static let schema = Schema([Document.self, Folder.self])
 
-    struct Store {
-        var container: ModelContainer
+    public struct Store {
+        public var container: ModelContainer
         /// False when the CloudKit-backed configuration couldn't be opened —
         /// no entitlement, no signed-in iCloud account, or (today) no
         /// container provisioned yet on the Developer Portal. The library
         /// still works; it just doesn't leave the device until that's fixed.
-        var isCloudBacked: Bool
+        public var isCloudBacked: Bool
     }
 
-    static func makeStore() -> Store {
+    public static func makeStore() -> Store {
         let cloud = ModelConfiguration("DoctorLibrary", schema: schema, cloudKitDatabase: .automatic)
         if let container = try? ModelContainer(for: schema, configurations: cloud) {
             return Store(container: container, isCloudBacked: true)
@@ -42,7 +44,7 @@ enum Persistence {
     }
 
     /// Previews and tests. Local only, so nothing touches a real iCloud account.
-    static func makeInMemoryContainer() -> ModelContainer {
+    public static func makeInMemoryContainer() -> ModelContainer {
         try! ModelContainer(
             for: schema,
             configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -55,10 +57,10 @@ enum Persistence {
     /// like any other document, and never reappears once the library has
     /// anything in it (including something still inbound from iCloud).
     @MainActor
-    static func seedIfEmpty(_ context: ModelContext) {
+    public static func seedIfEmpty(_ context: ModelContext, title: String, body: String) {
         let existing = (try? context.fetchCount(FetchDescriptor<Document>())) ?? 0
         guard existing == 0 else { return }
-        context.insert(Document(title: "Doctor for iPhone", body: ContentView.sample))
+        context.insert(Document(title: title, body: body))
         try? context.save()
     }
 }

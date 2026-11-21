@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import DoctorLibrary
 
 /// The library: every document in the CloudKit-backed store, newest-edited
 /// first. This is the app's root screen — see docs/ios.md for why there's no
@@ -57,7 +58,7 @@ struct ContentView: View {
             .sheet(isPresented: $showingSettings) {
                 ReaderSettingsView(preferences: preferences)
             }
-            .onAppear { Persistence.seedIfEmpty(context) }
+            .onAppear { Persistence.seedIfEmpty(context, title: "Doctor for iPhone", body: Self.sample) }
             .onOpenURL { importDocument(from: $0) }
         }
     }

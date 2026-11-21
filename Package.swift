@@ -18,7 +18,8 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "DoctorMarkdown", targets: ["DoctorMarkdown"]),
-        .library(name: "DoctorEditorKit", targets: ["DoctorEditorKit"])
+        .library(name: "DoctorEditorKit", targets: ["DoctorEditorKit"]),
+        .library(name: "DoctorLibrary", targets: ["DoctorLibrary"])
     ],
     targets: [
         .target(
@@ -33,10 +34,22 @@ let package = Package(
             dependencies: ["DoctorMarkdown"],
             path: "Sources/DoctorEditorKit"
         ),
+        // The synced library — the SwiftData/CloudKit `Document` and `Folder`
+        // models and the store that opens them. Shared by the iOS and macOS
+        // apps so both read the one CloudKit schema and can't drift apart.
+        .target(
+            name: "DoctorLibrary",
+            path: "Sources/DoctorLibrary"
+        ),
         .executableTarget(
             name: "Doctor",
             dependencies: ["DoctorMarkdown", "DoctorEditorKit"],
             path: "Sources/Doctor"
+        ),
+        .testTarget(
+            name: "DoctorLibraryTests",
+            dependencies: ["DoctorLibrary"],
+            path: "Tests/DoctorLibraryTests"
         ),
         .testTarget(
             name: "DoctorMarkdownTests",

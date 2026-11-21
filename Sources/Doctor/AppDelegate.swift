@@ -56,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let store = DocumentStore.shared
+        // Library tabs autosave on a short delay; write any pending edit now.
+        store.documents.forEach { $0.flushToLibrary() }
         store.persistSession()
 
         guard store.hasUnsavedChanges else {
@@ -87,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        DocumentStore.shared.documents.forEach { $0.flushToLibrary() }
         DocumentStore.shared.persistSession()
     }
 }

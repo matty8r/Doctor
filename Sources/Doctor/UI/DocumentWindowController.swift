@@ -106,10 +106,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         guard let window else { return }
         window.title = markdown.displayName
         window.representedURL = markdown.url
-        window.subtitle = markdown.url.map {
-            $0.deletingLastPathComponent().path
-                .replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        } ?? ""
+        window.subtitle = markdown.isLibraryBacked
+            ? markdown.subtitle
+            : (markdown.url.map {
+                $0.deletingLastPathComponent().path
+                    .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+            } ?? "")
         window.isDocumentEdited = markdown.isDirty
         modeGroup?.selectedIndex = EditorMode.allCases.firstIndex(of: markdown.mode) ?? 0
     }

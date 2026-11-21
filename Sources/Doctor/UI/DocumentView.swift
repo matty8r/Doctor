@@ -52,7 +52,7 @@ private struct ExternalChangeBanner: View {
                 .foregroundStyle(.orange)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("This file changed on disk")
+                Text(document.isLibraryBacked ? "This document changed on another device" : "This file changed on disk")
                     .font(.system(size: 12, weight: .medium))
                 Text("You have unsaved edits here too.")
                     .font(.system(size: 11))
@@ -61,7 +61,7 @@ private struct ExternalChangeBanner: View {
 
             Spacer()
 
-            Button("Reload from Disk") { document.acceptExternalChanges() }
+            Button(document.isLibraryBacked ? "Use Their Version" : "Reload from Disk") { document.acceptExternalChanges() }
             Button("Keep My Version") { document.dismissExternalChanges() }
                 .keyboardShortcut(.defaultAction)
         }

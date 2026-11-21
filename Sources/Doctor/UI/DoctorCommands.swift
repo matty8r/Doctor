@@ -15,6 +15,9 @@ struct DoctorCommands: Commands {
             Button("New") { store.newDocument() }
                 .keyboardShortcut("n", modifiers: .command)
 
+            Button("New Library Document") { store.newLibraryDocument(in: nil) }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+
             Button("Open…") { store.showOpenPanel() }
                 .keyboardShortcut("o", modifiers: .command)
 
@@ -47,9 +50,16 @@ struct DoctorCommands: Commands {
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!hasDocument)
 
-            Button("Save As…") { if let document { store.saveAs(document) } }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(!hasDocument)
+            Button(document?.isLibraryBacked == true ? "Save a Copy as File…" : "Save As…") {
+                if let document { store.saveAs(document) }
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(!hasDocument)
+
+            // An explicit copy into the synced library; the file itself is
+            // left alone. Library documents are already there.
+            Button("Add to Library") { if let document { store.addToLibrary(document) } }
+                .disabled(document == nil || document?.isLibraryBacked == true)
 
             Button("Revert to Saved") {
                 guard let document, document.url != nil else { return }
@@ -90,6 +100,12 @@ struct DoctorCommands: Commands {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
             .disabled(document?.url == nil)
+        }
+
+        CommandGroup(before: .windowList) {
+            Button("Library") { LibraryWindowController.shared.toggle() }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+            Divider()
         }
 
         CommandGroup(replacing: .printItem) {

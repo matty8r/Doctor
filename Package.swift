@@ -43,7 +43,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Doctor",
-            dependencies: ["DoctorMarkdown", "DoctorEditorKit"],
+            dependencies: ["DoctorMarkdown", "DoctorEditorKit", "DoctorLibrary"],
             path: "Sources/Doctor"
         ),
         .testTarget(

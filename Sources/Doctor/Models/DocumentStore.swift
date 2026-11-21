@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -36,8 +37,14 @@ final class DocumentStore: ObservableObject {
         selected.flatMap { controllers[$0.id] }
     }
 
+    /// Library tabs save themselves into the library, so they never count as
+    /// unsaved: quitting flushes them instead of asking.
     var hasUnsavedChanges: Bool {
-        documents.contains { $0.isDirty }
+        documents.contains { $0.isDirty && !$0.isLibraryBacked }
+    }
+
+    private var library: LibraryStore {
+        MainActor.assumeIsolated { LibraryStore.shared }
     }
 
     // MARK: - Opening
@@ -68,6 +75,35 @@ final class DocumentStore: ObservableObject {
             presentError(error, title: "Couldn't open \(target.lastPathComponent)")
             return nil
         }
+    }
+
+    // MARK: - The synced library
+
+    /// Opens a library document in a tab, or goes to the tab it's already in.
+    @discardableResult
+    func openLibrary(_ item: LibraryDocument) -> MarkdownDocument {
+        if let existing = documents.first(where: { $0.libraryItem?.id == item.id }) {
+            controllers[existing.id]?.showWindow(nil)
+            return existing
+        }
+        let doc = MarkdownDocument(library: item)
+        insert(doc)
+        return doc
+    }
+
+    /// A new, empty document filed in `folder` (or the library root).
+    @discardableResult
+    func newLibraryDocument(in folder: LibraryFolder? = nil) -> MarkdownDocument {
+        openLibrary(MainActor.assumeIsolated { library.newDocument(in: folder) })
+    }
+
+    /// An explicit copy of a file or untitled tab into the library. The
+    /// original is left exactly as it was: the two never silently convert.
+    func addToLibrary(_ doc: MarkdownDocument, in folder: LibraryFolder? = nil) {
+        guard !doc.isLibraryBacked else { return }
+        let title = doc.url?.deletingPathExtension().lastPathComponent ?? doc.firstHeading ?? ""
+        let item = MainActor.assumeIsolated { library.newDocument(title: title, body: doc.text, in: folder) }
+        MainActor.assumeIsolated { LibraryWindowController.shared.show(selecting: item.id) }
     }
 
     func open(urls: [URL]) {
@@ -149,6 +185,7 @@ final class DocumentStore: ObservableObject {
 
     /// Asks what to do with unsaved changes. True means the window may close.
     func confirmClose(_ doc: MarkdownDocument) -> Bool {
+        if doc.isLibraryBacked { doc.flushToLibrary(); return true }
         guard doc.isDirty else { return true }
         switch askAboutUnsavedChanges(doc) {
         case .save: return save(doc)
@@ -160,6 +197,7 @@ final class DocumentStore: ObservableObject {
     func didClose(_ controller: DocumentWindowController) {
         guard !isTerminating else { return }
         let doc = controller.markdown
+        doc.flushToLibrary()
         controllers[doc.id] = nil
         documentObservers[doc.id] = nil
         documents.removeAll { $0.id == doc.id }
@@ -200,7 +238,7 @@ final class DocumentStore: ObservableObject {
 
     @discardableResult
     func save(_ doc: MarkdownDocument) -> Bool {
-        if doc.url == nil { return saveAs(doc) }
+        if doc.url == nil && !doc.isLibraryBacked { return saveAs(doc) }
         do {
             try doc.save()
             return true
@@ -222,10 +260,13 @@ final class DocumentStore: ObservableObject {
             panel.directoryURL = directory
         }
 
+        if doc.isLibraryBacked { panel.title = "Save a Copy as a File" }
+
         guard panel.runModal() == .OK, let url = panel.url else { return false }
 
         do {
-            try doc.save(to: url)
+            // A library tab stays in the library; Save As just writes a copy.
+            if doc.isLibraryBacked { try doc.exportCopy(to: url) } else { try doc.save(to: url) }
             return true
         } catch {
             presentError(error, title: "Couldn't save \(doc.displayName)")
@@ -256,6 +297,8 @@ final class DocumentStore: ObservableObject {
 
     private struct SessionTab: Codable {
         var path: String?
+        /// Set for a tab on a synced library document (then `path` is nil).
+        var libraryID: String?
         var unsavedText: String?
         var mode: String
     }
@@ -300,8 +343,11 @@ final class DocumentStore: ObservableObject {
         let tabs = documents.map { doc -> SessionTab in
             SessionTab(
                 path: doc.url?.path,
+                libraryID: doc.libraryItem?.id.uuidString,
                 // Only carry text we'd otherwise lose.
-                unsavedText: (doc.url == nil || doc.isDirty) ? doc.text : nil,
+                unsavedText: doc.isLibraryBacked
+                    ? (doc.isDirty ? doc.text : nil)
+                    : ((doc.url == nil || doc.isDirty) ? doc.text : nil),
                 mode: doc.mode.rawValue
             )
         }
@@ -321,7 +367,15 @@ final class DocumentStore: ObservableObject {
 
         for tab in session.tabs {
             let mode = EditorMode(rawValue: tab.mode)
-            if let path = tab.path {
+            if let id = tab.libraryID.flatMap(UUID.init(uuidString:)) {
+                // A library document that hasn't synced down (or was deleted
+                // elsewhere) is simply skipped.
+                if let item = MainActor.assumeIsolated({ library.document(withID: id) }) {
+                    let opened = openLibrary(item)
+                    if let mode { opened.mode = mode }
+                    if let unsaved = tab.unsavedText { opened.text = unsaved }
+                }
+            } else if let path = tab.path {
                 let url = URL(fileURLWithPath: path)
                 if let unsaved = tab.unsavedText {
                     // The buffer was dirty at quit: restore the edit, not the file.

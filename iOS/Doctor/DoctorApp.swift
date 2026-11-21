@@ -11,6 +11,11 @@ struct DoctorApp: App {
             // Owns its own NavigationStack (and the path binding newDocument()
             // pushes into), rather than one wrapped around it here.
             ContentView()
+                #if DEBUG
+                .task {
+                    if SchemaSeed.requested { await SchemaSeed.run(store.container.mainContext) }
+                }
+                #endif
         }
         .modelContainer(store.container)
     }

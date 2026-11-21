@@ -65,4 +65,31 @@ final class FolderTests: XCTestCase {
         XCTAssertEqual(root.sortedChildren.map(\.name), ["A", "b"])
         XCTAssertEqual(root.sortedDocuments.map(\.title), ["new", "old"])
     }
+
+    func testSearchShowsFoldersWithMatchingContentsAnywhereBeneath() {
+        let context = makeContext()
+        let work = Folder(name: "Work"), drafts = Folder(name: "Drafts", parent: work)
+        let other = Folder(name: "Personal")
+        let hit = Document(title: "Launch notes", body: "the quick brown fox", folder: drafts)
+        [work, drafts, other].forEach(context.insert); context.insert(hit)
+
+        XCTAssertTrue(work.isVisible(for: "fox"), "a body match three levels down keeps its ancestors visible")
+        XCTAssertTrue(drafts.isVisible(for: "LAUNCH"))
+        XCTAssertFalse(other.isVisible(for: "fox"))
+        XCTAssertTrue(other.isVisible(for: "  "), "a blank query shows everything")
+        XCTAssertTrue(other.isVisible(for: "person"), "folder names match too")
+        XCTAssertTrue(hit.matches("Fox"))
+        XCTAssertFalse(hit.matches("zebra"))
+    }
+
+    func testItemCountAndRoots() {
+        let context = makeContext()
+        let b = Folder(name: "b"), a = Folder(name: "A"), child = Folder(name: "c", parent: b)
+        let note = Document(title: "n", folder: b)
+        [a, b, child].forEach(context.insert); context.insert(note)
+
+        XCTAssertEqual(b.itemCount, 2)
+        XCTAssertEqual(a.itemCount, 0)
+        XCTAssertEqual(Folder.roots(in: [b, a, child]).map(\.name), ["A", "b"])
+    }
 }

@@ -75,3 +75,40 @@ public final class Folder {
         context.delete(self)
     }
 }
+
+// MARK: - Searching and counting (shared by the Mac and iPhone library views)
+
+extension Document {
+    /// Whether this document matches a search `query` (title or body). An
+    /// empty query matches everything.
+    public func matches(_ query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return q.isEmpty
+            || displayTitle.localizedCaseInsensitiveContains(q)
+            || body.localizedCaseInsensitiveContains(q)
+    }
+}
+
+extension Folder {
+    /// Whether this folder should show while searching: its own name matches,
+    /// or a document or subfolder inside it does. An empty query shows all.
+    public func isVisible(for query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return q.isEmpty
+            || displayName.localizedCaseInsensitiveContains(q)
+            || (documents ?? []).contains { $0.matches(q) }
+            || (children ?? []).contains { $0.isVisible(for: q) }
+    }
+
+    /// Documents and subfolders directly inside.
+    public var itemCount: Int {
+        (documents?.count ?? 0) + (children?.count ?? 0)
+    }
+
+    /// Top-level folders from a flat list, alphabetical.
+    public static func roots(in folders: [Folder]) -> [Folder] {
+        folders
+            .filter { $0.parent == nil }
+            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
+}

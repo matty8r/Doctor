@@ -50,4 +50,44 @@ enum SchemaSeed {
         exit(0)
     }
 }
+
+/// `-SampleLibrary`: an in-memory library with a few folders and documents,
+/// for looking at the library screen (simulator, screenshots) without touching
+/// the real store or CloudKit. Nothing is saved anywhere.
+enum SampleLibrary {
+    static var requested: Bool {
+        ProcessInfo.processInfo.arguments.contains("-SampleLibrary")
+    }
+
+    @MainActor
+    static func makeContainer() -> ModelContainer {
+        let container = Persistence.makeInMemoryContainer()
+        let context = container.mainContext
+        let work = Folder(name: "Work")
+        let drafts = Folder(name: "Drafts", parent: work)
+        let meetings = Folder(name: "Meetings", parent: work)
+        let personal = Folder(name: "Personal")
+        let recipes = Folder(name: "Recipes", parent: personal)
+        [work, drafts, meetings, personal, recipes].forEach(context.insert)
+
+        func doc(_ title: String, _ folder: Folder?, _ ago: TimeInterval) {
+            let d = Document(title: title, body: "# \(title)\n", folder: folder)
+            d.modifiedAt = Date().addingTimeInterval(-ago)
+            context.insert(d)
+        }
+        doc("Doctor for iPhone", nil, 300)
+        doc("Reading list", nil, 86_400 * 3)
+        doc("Q4 plan", work, 3_600)
+        doc("Launch notes", drafts, 7_200)
+        doc("Essay: on plain text", drafts, 86_400)
+        doc("Weekly sync", meetings, 86_400 * 2)
+        doc("Pasta", recipes, 86_400 * 9)
+        doc("Packing list", personal, 86_400 * 5)
+        try? context.save()
+
+        // Work and Drafts open, Personal collapsed — the tree in both states.
+        UserDefaults.standard.set([work.id.uuidString, drafts.id.uuidString], forKey: "libraryExpandedFolders")
+        return container
+    }
+}
 #endif

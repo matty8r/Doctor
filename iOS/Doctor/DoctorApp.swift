@@ -4,7 +4,16 @@ import DoctorLibrary
 
 @main
 struct DoctorApp: App {
-    private let store = Persistence.makeStore()
+    private let store = Self.makeLibraryStore()
+
+    private static func makeLibraryStore() -> Persistence.Store {
+        #if DEBUG
+        if SampleLibrary.requested {
+            return Persistence.Store(container: SampleLibrary.makeContainer(), isCloudBacked: false)
+        }
+        #endif
+        return Persistence.makeStore()
+    }
 
     var body: some Scene {
         WindowGroup {

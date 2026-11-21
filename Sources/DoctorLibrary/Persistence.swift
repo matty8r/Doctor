@@ -20,6 +20,11 @@ public enum Persistence {
         /// container provisioned yet on the Developer Portal. The library
         /// still works; it just doesn't leave the device until that's fixed.
         public var isCloudBacked: Bool
+
+        public init(container: ModelContainer, isCloudBacked: Bool) {
+            self.container = container
+            self.isCloudBacked = isCloudBacked
+        }
     }
 
     public static func makeStore() -> Store {

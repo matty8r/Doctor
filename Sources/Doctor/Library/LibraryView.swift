@@ -397,19 +397,9 @@ struct LibraryView: View {
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isSearching: Bool { !trimmedQuery.isEmpty }
 
-    private func matches(_ document: LibraryDocument) -> Bool {
-        !isSearching
-            || document.displayTitle.localizedCaseInsensitiveContains(trimmedQuery)
-            || document.body.localizedCaseInsensitiveContains(trimmedQuery)
-    }
-
-    /// A folder shows while searching if its name matches or anything inside does.
-    private func isVisible(_ folder: LibraryFolder) -> Bool {
-        !isSearching
-            || folder.displayName.localizedCaseInsensitiveContains(trimmedQuery)
-            || (folder.documents ?? []).contains(where: matches)
-            || (folder.children ?? []).contains(where: isVisible)
-    }
+    // The matching rules live in DoctorLibrary, shared with the iPhone app.
+    private func matches(_ document: LibraryDocument) -> Bool { document.matches(trimmedQuery) }
+    private func isVisible(_ folder: LibraryFolder) -> Bool { folder.isVisible(for: trimmedQuery) }
 
     private var visibleRootFolders: [LibraryFolder] {
         folders

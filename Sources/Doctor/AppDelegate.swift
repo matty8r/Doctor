@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.shared.applyAppearance()
 
+        // Open the synced library now, not when the Library window first needs
+        // it: CloudKit only exchanges changes while the store is open, so a
+        // lazy open means no sync until someone happens to look at the library.
+        MainActor.assumeIsolated { _ = LibraryStore.shared }
+
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.openedFilesAtLaunch else { return }
             DocumentStore.shared.restoreSession()

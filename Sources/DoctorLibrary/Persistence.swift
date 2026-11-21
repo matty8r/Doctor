@@ -24,8 +24,13 @@ public enum Persistence {
 
     public static func makeStore() -> Store {
         let cloud = ModelConfiguration("DoctorLibrary", schema: schema, cloudKitDatabase: .automatic)
-        if let container = try? ModelContainer(for: schema, configurations: cloud) {
+        do {
+            let container = try ModelContainer(for: schema, configurations: cloud)
             return Store(container: container, isCloudBacked: true)
+        } catch {
+            // Say why — the fallback is silent to the person using the app, and
+            // "it just isn't syncing" is otherwise a guessing game.
+            NSLog("Doctor: CloudKit-backed library failed to open, falling back to local only: \(error)")
         }
 
         let offline = ModelConfiguration("DoctorLibrary", schema: schema, cloudKitDatabase: .none)

@@ -15,10 +15,10 @@ struct DoctorCommands: Commands {
             Button("New") { store.newDocument() }
                 .keyboardShortcut("n", modifiers: .command)
 
-            Button("New Library Document") { LibraryWindowController.shared.newDocument() }
+            Button("New Library Document") { store.showLibrary(command: .newDocument) }
                 .keyboardShortcut("n", modifiers: [.command, .option])
 
-            Button("New Library Folder") { LibraryWindowController.shared.newFolder() }
+            Button("New Library Folder") { store.showLibrary(command: .newFolder) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("Open…") { store.showOpenPanel() }
@@ -105,12 +105,6 @@ struct DoctorCommands: Commands {
             .disabled(document?.url == nil)
         }
 
-        CommandGroup(before: .windowList) {
-            Button("Library") { LibraryWindowController.shared.toggle() }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
-            Divider()
-        }
-
         CommandGroup(replacing: .printItem) {
             Button("Print…") {
                 if let document {
@@ -135,6 +129,11 @@ struct DoctorCommands: Commands {
                 .disabled(!hasDocument)
 
             Divider()
+
+            Button(store.selectedController?.isLibraryVisible == true ? "Hide Library" : "Show Library") {
+                store.toggleLibrary()
+            }
+            .keyboardShortcut("l", modifiers: [.command, .shift])
 
             Button(store.selectedController?.isCheatSheetVisible == true ? "Hide Cheat Sheet" : "Show Cheat Sheet") {
                 store.selectedController?.toggleCheatSheet()

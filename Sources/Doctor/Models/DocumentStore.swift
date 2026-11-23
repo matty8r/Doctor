@@ -103,7 +103,26 @@ final class DocumentStore: ObservableObject {
         guard !doc.isLibraryBacked else { return }
         let title = doc.url?.deletingPathExtension().lastPathComponent ?? doc.firstHeading ?? ""
         let item = MainActor.assumeIsolated { library.newDocument(title: title, body: doc.text, in: folder) }
-        MainActor.assumeIsolated { LibraryWindowController.shared.show(selecting: item.id) }
+        showLibrary(reveal: item.id)
+    }
+
+    /// The library lives in a sidebar in every document window. These act on
+    /// the front one, opening an untitled document first if none is open.
+    private func frontController() -> DocumentWindowController? {
+        if let controller = selectedController { return controller }
+        if let doc = documents.last, let controller = controllers[doc.id] { return controller }
+        return controllers[newDocument().id]
+    }
+
+    func toggleLibrary() {
+        guard let controller = frontController() else { return }
+        controller.toggleLibrary()
+    }
+
+    /// Shows the library sidebar, then optionally asks it to make a folder or
+    /// document (inside the selected folder) or to reveal an item.
+    func showLibrary(command: LibraryCommand? = nil, reveal id: UUID? = nil) {
+        frontController()?.showLibrary(command: command, reveal: id)
     }
 
     func open(urls: [URL]) {

@@ -8,17 +8,25 @@ import DoctorEditorKit
 /// one of them: a single file is just a window, the way Preview does it.
 final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     let markdown: MarkdownDocument
+    /// This window's own library selection and pending commands. The sidebar is
+    /// per window (each tab is a window); what's shared between them is whether
+    /// it is visible and which folders are open.
+    let libraryUI: LibraryUIState
 
     private let split = NSSplitViewController()
+    private var libraryItem: NSSplitViewItem!
     private var cheatSheetItem: NSSplitViewItem!
     private weak var modeGroup: NSToolbarItemGroup?
     private var observers: Set<AnyCancellable> = []
 
     private static let cheatSheetKey = "cheatSheetVisible"
+    private static let libraryKey = "librarySidebarVisible"
+    private static let libraryVisibilityChanged = Notification.Name("Doctor.librarySidebarVisibilityChanged")
     private static let frameName = "Doctor.document"
 
     init(markdown: MarkdownDocument) {
         self.markdown = markdown
+        self.libraryUI = MainActor.assumeIsolated { LibraryUIState() }
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1020, height: 740),
@@ -54,6 +62,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     // MARK: - Content
 
     private func buildContent() {
+        // The library, as a collapsible sidebar on the left. Visible by default
+        // the first time; after that the last choice sticks, in every tab.
+        let libraryRoot = MainActor.assumeIsolated {
+            AnyView(LibraryView(ui: libraryUI).modelContainer(LibraryStore.shared.container))
+        }
+        let library = NSHostingController(rootView: libraryRoot)
+        library.sizingOptions = []
+        libraryItem = NSSplitViewItem(sidebarWithViewController: library)
+        libraryItem.minimumThickness = 210
+        libraryItem.maximumThickness = 420
+        libraryItem.canCollapse = true
+        libraryItem.isCollapsed = !(UserDefaults.standard.object(forKey: Self.libraryKey) as? Bool ?? true)
+
         let editor = NSHostingController(
             rootView: DocumentView(document: markdown)
                 .environmentObject(DocumentStore.shared)
@@ -71,8 +92,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
         cheatSheetItem.canCollapse = true
         cheatSheetItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.cheatSheetKey)
 
-        split.splitViewItems = [editorItem, cheatSheetItem]
-        split.splitView.autosaveName = "Doctor.split"
+        split.splitViewItems = [libraryItem, editorItem, cheatSheetItem]
+        // v2: the divider positions saved before there was a sidebar describe a
+        // two-pane window.
+        split.splitView.autosaveName = "Doctor.split.v2"
         window?.contentViewController = split
 
         // The last choice sticks, so a new tab opens the way the previous one was.
@@ -84,9 +107,44 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
                 DocumentStore.shared.objectWillChange.send()
             }
             .store(in: &observers)
+
+        // Same for the library, and mirror it into the other tabs' windows so
+        // switching tabs doesn't flip the sidebar back.
+        libraryItem.publisher(for: \.isCollapsed)
+            .dropFirst()
+            .sink { [weak self] collapsed in
+                UserDefaults.standard.set(!collapsed, forKey: Self.libraryKey)
+                NotificationCenter.default.post(name: Self.libraryVisibilityChanged, object: self)
+                DocumentStore.shared.objectWillChange.send()
+            }
+            .store(in: &observers)
+
+        NotificationCenter.default.publisher(for: Self.libraryVisibilityChanged)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let collapsed = !(UserDefaults.standard.object(forKey: Self.libraryKey) as? Bool ?? true)
+                if self.libraryItem.isCollapsed != collapsed { self.libraryItem.isCollapsed = collapsed }
+            }
+            .store(in: &observers)
     }
 
     var isCheatSheetVisible: Bool { !cheatSheetItem.isCollapsed }
+    var isLibraryVisible: Bool { !libraryItem.isCollapsed }
+
+    func toggleLibrary() {
+        split.toggleSidebar(nil)
+    }
+
+    /// Opens the sidebar if it's hidden, then optionally asks the tree to make
+    /// something or to select an item.
+    func showLibrary(command: LibraryCommand? = nil, reveal id: UUID? = nil) {
+        if libraryItem.isCollapsed { libraryItem.animator().isCollapsed = false }
+        window?.makeKeyAndOrderFront(nil)
+        MainActor.assumeIsolated {
+            if let command { libraryUI.command = command }
+            if let id { libraryUI.reveal = id }
+        }
+    }
 
     func toggleCheatSheet() {
         split.toggleInspector(nil)
@@ -171,7 +229,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     private func buildToolbar() {
-        let toolbar = NSToolbar(identifier: "Doctor.document")
+        // v2: a saved toolbar configuration from before the sidebar would
+        // silently leave out the sidebar button.
+        let toolbar = NSToolbar(identifier: "Doctor.document.v2")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = true
@@ -180,14 +240,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        var items: [NSToolbarItem.Identifier] = [.flexibleSpace, Item.mode, .space]
+        var items: [NSToolbarItem.Identifier] = [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Item.mode, .space]
         if AppSettings.shared.isObsidianConfigured { items.append(Item.obsidian) }
         items += [Item.share, .inspectorTrackingSeparator, .flexibleSpace, Item.cheatSheet]
         return items
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.mode, Item.share, Item.obsidian, Item.exportPDF, .print,
+        [.toggleSidebar, .sidebarTrackingSeparator, Item.mode, Item.share, Item.obsidian, Item.exportPDF, .print,
          .inspectorTrackingSeparator, Item.cheatSheet, .space, .flexibleSpace]
     }
 

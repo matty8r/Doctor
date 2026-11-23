@@ -50,6 +50,10 @@ enum LibraryCommand: Equatable {
 /// the phone.
 @MainActor
 final class LibraryExpansion: ObservableObject {
+    /// One instance for the whole app: every document window has its own
+    /// library sidebar, and they should all show the same folders open.
+    static let shared = LibraryExpansion()
+
     private static let key = "libraryExpandedFolders"
 
     @Published var expanded: Set<UUID> {
@@ -83,7 +87,7 @@ struct LibraryView: View {
     @Query(sort: \LibraryFolder.name) private var folders: [LibraryFolder]
     @Query(sort: \LibraryDocument.modifiedAt, order: .reverse) private var documents: [LibraryDocument]
 
-    @StateObject private var expansion = LibraryExpansion()
+    @ObservedObject private var expansion: LibraryExpansion = .shared
     @State private var query = ""
     @State private var renaming: LibraryItemID?
     @State private var renameText = ""
@@ -134,7 +138,6 @@ struct LibraryView: View {
             Divider()
             footer
         }
-        .frame(minWidth: 240, minHeight: 320)
         .onChange(of: ui.command) { _, command in
             guard let command else { return }
             ui.command = nil

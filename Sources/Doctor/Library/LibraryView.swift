@@ -204,6 +204,15 @@ struct LibraryView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        // The whole row is the target, not just the text.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        // One click opens it. Hooked to the click rather than to the selection
+        // so that arrowing through the list doesn't open a tab per document;
+        // Return (and double-click) still open via the list's primary action.
+        .simultaneousGesture(TapGesture().onEnded {
+            DocumentStore.shared.openLibrary(document)
+        })
         .tag(LibraryItemID.document(document.id))
         .draggable(LibraryItemID.document(document.id).dragString)
     }

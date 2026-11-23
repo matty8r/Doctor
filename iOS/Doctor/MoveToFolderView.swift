@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import DoctorEditorKit
 import DoctorLibrary
 
 /// What's being filed somewhere else.
@@ -80,8 +81,15 @@ struct MoveToFolderView: View {
             move(to: destination)
         } label: {
             HStack {
-                Label(name, systemImage: destination == nil ? "tray" : "folder")
-                    .padding(.leading, CGFloat(depth) * 18)
+                Label {
+                    Text(name)
+                } icon: {
+                    Image(systemName: destination == nil ? "tray" : "folder.fill")
+                        .foregroundStyle(destination == nil
+                            ? Color.secondary
+                            : Color(uiColor: MarkdownTheme.folderTint))
+                }
+                .padding(.leading, CGFloat(depth) * 18)
                 Spacer()
                 if isCurrent { Image(systemName: "checkmark").foregroundStyle(.secondary) }
             }

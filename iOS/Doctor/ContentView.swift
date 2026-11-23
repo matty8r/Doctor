@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import DoctorEditorKit
 import DoctorLibrary
 
 /// The library: the CloudKit-backed folders and documents as a tree whose
@@ -118,7 +119,12 @@ struct ContentView: View {
                 }
             } label: {
                 HStack {
-                    Label(folder.displayName, systemImage: "folder")
+                    Label {
+                        Text(folder.displayName)
+                    } icon: {
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(Color(uiColor: MarkdownTheme.folderTint))
+                    }
                     Spacer()
                     Text("\(folder.itemCount)")
                         .font(.caption)

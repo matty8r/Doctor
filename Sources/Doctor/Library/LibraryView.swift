@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 
+import DoctorEditorKit
 import DoctorLibrary
 
 /// What a row in the library tree is, for selection and drag-and-drop.
@@ -178,7 +179,12 @@ struct LibraryView: View {
                     documentRow(document)
                 }
             } label: {
-                Label(folder.displayName, systemImage: "folder")
+                Label {
+                    Text(folder.displayName)
+                } icon: {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(Color(nsColor: MarkdownTheme.folderTint))
+                }
             }
             .tag(LibraryItemID.folder(folder.id))
             .draggable(LibraryItemID.folder(folder.id).dragString)
@@ -208,6 +214,7 @@ struct LibraryView: View {
 
             Button { newFolder(in: selectedFolder) } label: {
                 Image(systemName: "folder.badge.plus")
+                    .foregroundStyle(Color(nsColor: MarkdownTheme.folderTint))
             }
             .help("New folder")
 

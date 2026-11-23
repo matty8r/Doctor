@@ -38,13 +38,12 @@ public struct MarkdownTheme {
         dark: Platform.color(red: 0.47, green: 0.68, blue: 0.98, alpha: 1)
     )
 
-    /// Folders in the library — a manila amber. Blue is already Doctor's link
-    /// colour (`accent`), and the system's default folder blue says "any app";
-    /// amber sits on the warm paper palette of the icon and stands apart from
-    /// both.
+    /// Folders in the library: the icon's own ink and paper — black by day,
+    /// white by night — so they follow the monochrome identity of the app
+    /// rather than the system's blue (which is also Doctor's link colour).
     public static let folderTint = Platform.dynamicColor(
-        light: Platform.color(red: 0.78, green: 0.50, blue: 0.08, alpha: 1),
-        dark: Platform.color(red: 0.96, green: 0.72, blue: 0.32, alpha: 1)
+        light: Platform.color(red: 0.063, green: 0.067, blue: 0.078, alpha: 1),  // #101114, the icon's ink
+        dark: Platform.color(red: 0.973, green: 0.969, blue: 0.953, alpha: 1)    // #F8F7F3, the icon's paper
     )
 
     public static let codeText = Platform.dynamicColor(
